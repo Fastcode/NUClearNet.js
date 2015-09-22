@@ -1,0 +1,27 @@
+{
+  "name": "nuclearnet.js",
+  "version": "0.0.1",
+  "description": "Node.js module for interacting with the NUClear network",
+  "main": "lib/NUClearNet.js",
+  "scripts": {
+    "test": "node tests/test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fastcode/NUClearNet.js.git"
+  },
+  "keywords": [
+    "network",
+    "NUClear",
+    "NUbots"
+  ],
+  "author": "Trent Houliston <trent@houliston.me> (https://github.com/TrentHouliston/)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Fastcode/NUClearNet.js/issues"
+  },
+  "homepage": "https://github.com/Fastcode/NUClearNet.js#readme",
+  "dependencies": {
+    "murmurhash-native": "*"
+  }
+}
