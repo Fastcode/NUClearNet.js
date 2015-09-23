@@ -13,7 +13,7 @@ nu.on('nuclear_leave', function (name) {
 var stringName = 'std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >';
 
 nu.on(stringName, function(source, data) {
-    console.log('Message from', source);
+    console.log('Message from', source.name);
     var string = data.toString();
 
     if(string.length < 100) {
