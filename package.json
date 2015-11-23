@@ -1,6 +1,6 @@
 {
   "name": "nuclearnet.js",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Node.js module for interacting with the NUClear network",
   "main": "lib/NUClearNet.js",
   "scripts": {
