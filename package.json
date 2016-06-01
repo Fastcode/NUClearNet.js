@@ -1,6 +1,6 @@
 {
   "name": "nuclearnet.js",
-  "version": "0.0.6",
+  "version": "0.0.5",
   "description": "Node.js module for interacting with the NUClear network",
   "main": "lib/NUClearNet.js",
   "scripts": {
@@ -22,6 +22,6 @@
   },
   "homepage": "https://github.com/Fastcode/NUClearNet.js#readme",
   "dependencies": {
-    "non-crypto-hash": "0.1.2"
+    "murmurhash-native": "*"
   }
 }
