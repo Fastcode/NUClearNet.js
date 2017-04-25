@@ -1,41 +1,67 @@
 {
-    "targets": [
+    'targets': [
         {
-            "target_name": "nuclearnet",
-            "sources": [
-                "src/nuclear/src/extension/network/NUClearNetwork.cpp"
+            'target_name': 'nuclearnet',
+            'sources': [
+                'src/binding.cpp',
+                'src/nuclear/src/extension/network/NUClearNetwork.cpp',
+                'src/nuclear/src/util/platform.cpp',
+                'src/nuclear/src/util/serialise/xxhash.c',
+                'src/nuclear/src/util/network/get_interfaces.cpp'
             ],
-            "cflags": [
-                "-std=c++14"
+            'cflags': [
             ],
-            "include_dirs": [
-                "<!(node -e \"require('nan')\")",
-                "src/nuclear/src/nuclear/nuclear_bits"
+            'include_dirs': [
+                '<!(node -e "require(\'nan\')")',
+                'src/nuclear/src/include'
             ],
-            "conditions": [
+            'conditions': [
                 [
-                    "OS=='linux'", {
-                        "include_dirs": [
+                    'OS=="linux"', {
+                        'ccflags': [
+                            '-std=c++14'
+                            '-fPIC',
+                            '-fext-numeric-literals',
+                            '-fexceptions'
                         ],
-                        "ccflags": [
-                            "-fPIC"
+                        'ccflags!': [
+                            '-fno-exceptions'
                         ],
-                        "libraries": [
+                        'cflags_cc': [
+                            '-std=c++14',
+                            '-fext-numeric-literals'
+                        ],
+                        'cflags_cc!': [
+                            '-fno-exceptions',
+                            '-fno-rtti'
                         ],
                     }
                 ],
                 [
-                    'OS=="mac"',
-                    {
-                        "include_dirs": [
+                    'OS=="mac"', {
+                        'ccflags': [
+                            '-std=c++14'
+                            '-fPIC',
+                            '-fext-numeric-literals',
+                            '-fexceptions'
                         ],
-                        "libraries": [
+                        'ccflags!': [
+                            '-fno-exceptions'
                         ],
-                        "xcode_settings": {
-                            "MACOSX_DEPLOYMENT_TARGET": '10.9',
-                            "OTHER_CPLUSPLUSFLAGS": [
-                                '-stdlib=libc++'
-                            ]
+                        'cflags_cc': [
+                            '-std=c++14',
+                            '-fext-numeric-literals'
+                        ],
+                        'cflags_cc!': [
+                            '-fno-exceptions',
+                            '-fno-rtti'
+                        ],
+                        'xcode_settings': {
+                            'MACOSX_DEPLOYMENT_TARGET': '10.9',
+                            'GCC_ENABLE_CPP_EXCEPTIONS': 'YES',
+                            'GCC_ENABLE_CPP_RTTI': 'YES',
+                            'OTHER_CPLUSPLUSFLAGS': ['-std=c++14', '-stdlib=libc++'],
+                            'OTHER_LDFLAGS': ['-stdlib=libc++']
                         }
                     }
                 ]
