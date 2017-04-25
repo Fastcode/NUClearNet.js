@@ -4,6 +4,8 @@
             'target_name': 'nuclearnet',
             'sources': [
                 'src/binding.cpp',
+                'src/NetworkBinding.cpp',
+                'src/NetworkListener.cpp',
                 'src/nuclear/src/extension/network/NUClearNetwork.cpp',
                 'src/nuclear/src/util/platform.cpp',
                 'src/nuclear/src/util/serialise/xxhash.c',

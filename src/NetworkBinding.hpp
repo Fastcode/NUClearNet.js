@@ -15,11 +15,27 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef NETWORKBINDING_H
+#define NETWORKBINDING_H
+
 #include <nan.h>
-#include "NetworkBinding.hpp"
+#include "nuclear_bits/extension/network/NUClearNetwork.hpp"
 
-void Init(v8::Local<v8::Object> exports, v8::Local<v8::Object> module) {
-    NetworkBinding::Init(exports, module);
-}
+using NUClear::extension::network::NUClearNetwork;
 
-NODE_MODULE(nuclearnet, Init)
+class NetworkBinding : public Nan::ObjectWrap {
+public:
+    NetworkBinding();
+    static void Send(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static void On(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static void Reset(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static void Process(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static void Shutdown(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static void Init(v8::Local<v8::Object> exports, v8::Local<v8::Object> module);
+    static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static Nan::Persistent<v8::Function> constructor;
+
+    NUClearNetwork net;
+};
+
+#endif  // NETWORKBINDING_H

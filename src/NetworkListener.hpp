@@ -15,11 +15,31 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef NETWORKLISTENER_H
+#define NETWORKLISTENER_H
+
 #include <nan.h>
 #include "NetworkBinding.hpp"
 
-void Init(v8::Local<v8::Object> exports, v8::Local<v8::Object> module) {
-    NetworkBinding::Init(exports, module);
-}
+class NetworkListener : public Nan::AsyncProgressWorker {
+public:
+    NetworkListener(Nan::Callback* callback, NetworkBinding* binding, std::vector<NUClear::fd_t> notifyfds);
+    virtual ~NetworkListener();
+    void Execute(const ExecutionProgress& p);
+    void HandleProgressCallback(const char*, size_t);
+    void Destroy();
 
-NODE_MODULE(nuclearnet, Init)
+    NetworkBinding* binding;
+
+#ifdef _WIN32
+    WSAEVENT notifier;
+    std::vector<WSAEVENT> fds;
+#else
+    NUClear::fd_t notify_recv;
+    NUClear::fd_t notify_send;
+    std::vector<pollfd> fds;
+#endif  // _WIN32
+
+};
+
+#endif  // NETWORKLISTENER_H
