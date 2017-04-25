@@ -23,6 +23,21 @@ using NUClear::extension::network::NUClearNetwork;
 
 NetworkBinding::NetworkBinding() {}
 
+void NetworkBinding::Hash(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+    if (info[0]->IsString()) {
+        // Calculate hash
+        std::string s = *Nan::Utf8String(info[0]);
+        uint64_t hash = XXH64(s.c_str(), s.size(), 0x4e55436c);
+
+        // Return hash
+        info.GetReturnValue().Set(Nan::CopyBuffer(reinterpret_cast<const char*>(&hash), sizeof(uint64_t)).ToLocalChecked().As<v8::Value>());
+    }
+    // Otherwise, we accept null and undefined to mean everybody
+    else {
+        Nan::ThrowError("Can only hash strings");
+    }
+}
+
 void NetworkBinding::Send(const Nan::FunctionCallbackInfo<v8::Value>& info) {
 
     // info[0] == hash
@@ -139,7 +154,6 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
                 };
 
                 cb->Call(5, argv);
-
             });
         }
         else if (event == "join" || event == "leave") {
@@ -306,6 +320,7 @@ void NetworkBinding::Init(v8::Local<v8::Object> exports, v8::Local<v8::Object> m
     Nan::SetPrototypeMethod(tpl, "reset", Reset);
     Nan::SetPrototypeMethod(tpl, "process", Process);
     Nan::SetPrototypeMethod(tpl, "shutdown", Shutdown);
+    Nan::SetPrototypeMethod(tpl, "hash", Hash);
 
     constructor.Reset(tpl->GetFunction());
     module->Set(Nan::New("exports").ToLocalChecked(), tpl->GetFunction());

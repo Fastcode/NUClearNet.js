@@ -26,6 +26,7 @@ using NUClear::extension::network::NUClearNetwork;
 class NetworkBinding : public Nan::ObjectWrap {
 public:
     NetworkBinding();
+    static void Hash(const Nan::FunctionCallbackInfo<v8::Value>& info);
     static void Send(const Nan::FunctionCallbackInfo<v8::Value>& info);
     static void On(const Nan::FunctionCallbackInfo<v8::Value>& info);
     static void Reset(const Nan::FunctionCallbackInfo<v8::Value>& info);
