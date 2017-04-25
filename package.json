@@ -1,6 +1,6 @@
 {
   "name": "nuclearnet.js",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Node.js module for interacting with the NUClear network",
   "main": "lib/NUClearNet.js",
   "scripts": {
@@ -21,7 +21,9 @@
     "url": "https://github.com/Fastcode/NUClearNet.js/issues"
   },
   "homepage": "https://github.com/Fastcode/NUClearNet.js#readme",
+  "gypfile": true,
   "dependencies": {
-    "murmurhash-native": "1.0.1"
+    "bindings": "~1.2.1",
+    "nan": "^2.0.0"
   }
 }
