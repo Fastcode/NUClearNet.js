@@ -1,0 +1,51 @@
+language: cpp
+sudo: false
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+      - kalakris-cmake
+    packages:
+      - cmake
+      - gcc-4.9
+      - g++-4.9
+      - gcc-5
+      - g++-5
+      - gcc-6
+      - g++-6
+
+env:
+  - COMPILER="gcc-4.9"
+  - COMPILER="gcc-5"
+  - COMPILER="gcc-6"
+
+# Install our required dependencies
+install:
+
+  # gcc-4.9
+  - if [[ "$COMPILER" == "gcc-4.9" ]]; then export CXX="g++-4.9"; fi
+  - if [[ "$COMPILER" == "gcc-4.9" ]]; then export CC="gcc-4.9"; fi
+
+  # gcc-5
+  - if [[ "$COMPILER" == "gcc-5" ]]; then export CXX="g++-5"; fi
+  - if [[ "$COMPILER" == "gcc-5" ]]; then export CC="gcc-5"; fi
+
+  # gcc-6
+  - if [[ "$COMPILER" == "gcc-6" ]]; then export CXX="g++-6"; fi
+  - if [[ "$COMPILER" == "gcc-6" ]]; then export CC="gcc-6"; fi
+
+  # Catch
+  - wget https://raw.githubusercontent.com/philsquared/Catch/master/single_include/catch.hpp
+  - mkdir -p /tmp/include
+  - mv catch.hpp /tmp/include
+
+# Before our script is run (setup build)
+before_script:
+  - mkdir build
+  - cd build
+  - cmake -DCMAKE_BUILD_TYPE=Release -DCATCH_INCLUDE_DIR=/tmp/include ..
+
+# Run our build
+script:
+  - make
+  - ./tests/test_nuclear exclude:[network]
