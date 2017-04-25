@@ -85,7 +85,7 @@ void NetworkBinding::Send(const Nan::FunctionCallbackInfo<v8::Value>& info) {
         case 1:
             // If we have a string XXHash to get the hash
             if (info[0]->IsString()) {
-                std::string s = *Nan::Utf8String(info[2]);
+                std::string s = *Nan::Utf8String(info[0]);
                 hash          = XXH64(s.c_str(), s.size(), 0x4e55436c);
             }
             // Otherwise try to interpret it as a hash
