@@ -21,11 +21,10 @@ var NetworkBinding = require('bindings')('nuclearnet');
 var util = require('util');
 var EventEmitter = require('events').EventEmitter;
 
-var NUClearNet = function(name, group='239.226.152.162', port=7447, mtu=1500) {
+var NUClearNet = function(options) {
     // Create a new network object
-    this.net = new NetworkBinding();
+    this._net = new NetworkBinding();
     this._callbackMap = {};
-    this._name = name;
 
     // We have started listening to a new type
     this.on('newListener', function (event) {
@@ -34,7 +33,7 @@ var NUClearNet = function(name, group='239.226.152.162', port=7447, mtu=1500) {
          && event !== 'newListener'
          && event !== 'removeListener'
          && this.listenerCount(event) === 0) {
-            var hash = this.net.hash(event);
+            var hash = this._net.hash(event);
             this._callbackMap[hash] = event;
         }
     }.bind(this));
@@ -48,13 +47,13 @@ var NUClearNet = function(name, group='239.226.152.162', port=7447, mtu=1500) {
          && event !== 'removeListener'
          && this.listenerCount(event) === 0) {
             // Get our hash and delete it
-            var hash = this.net.hash(event);
+            var hash = this._net.hash(event);
             delete this._callbackMap[hash];
         }
     }.bind(this));
 
     // Bind our callback functions
-    this.net.on('packet', function(name, address, port, hash, payload) {
+    this._net.on('packet', function(name, address, port, hash, payload) {
 
         var eventName = this._callbackMap[hash];
 
@@ -68,7 +67,7 @@ var NUClearNet = function(name, group='239.226.152.162', port=7447, mtu=1500) {
         }
     }.bind(this));
 
-    this.net.on('join', function(name, address, port) {
+    this._net.on('join', function(name, address, port) {
         this.emit('nuclear_join', {
             'name': name,
             'address': address,
@@ -76,7 +75,7 @@ var NUClearNet = function(name, group='239.226.152.162', port=7447, mtu=1500) {
         });
     }.bind(this));
 
-    this.net.on('leave', function(name, address, port) {
+    this._net.on('leave', function(name, address, port) {
         this.emit('nuclear_leave', {
             'name': name,
             'address': address,
@@ -84,32 +83,36 @@ var NUClearNet = function(name, group='239.226.152.162', port=7447, mtu=1500) {
         });
     }.bind(this));
 
-    this.net.on('wait', function(duration) {
+    this._net.on('wait', function(duration) {
         setTimeout(function() {
-            this.net.process();
+            this._net.process();
         }.bind(this), duration);
     }.bind(this));
 
     setInterval(function() {
-        this.net.process();
+        this._net.process();
     }.bind(this), 1000);
 
     // Connect to the network
-    this.reset(name, group, port, mtu);
+    this.reset(options);
 
     // Run our first "process" to kick things off
-    this.net.process();
+    this._net.process();
 };
 
 // Inherit from event emitter
 util.inherits(NUClearNet, EventEmitter);
 
-NUClearNet.prototype.reset = function (name, group='239.226.152.162', port=7447, mtu=1500) {
-    this.net.reset(name, group, port, mtu)
+NUClearNet.prototype.reset = function (options) {
+    var name = options.name;
+    var group = options.group === undefined ? '239.226.152.162' : options.group
+    var port = options.port === undefined ? 7447 : options.port
+    var mtu = options.mtu === undefined ? 1500 : options.mtu
+    this._net.reset(name, group, port, mtu);
 };
 
 NUClearNet.prototype.send = function (typeName, data, target, reliable) {
-    this.net.send(typeName, data, target, reliable);
+    this._net.send(typeName, data, target, reliable);
 };
 
-module.exports = NUClearNet;
+exports.NUClearNet = NUClearNet;

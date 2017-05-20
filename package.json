@@ -2,7 +2,7 @@
   "name": "nuclearnet.js",
   "version": "1.0.0",
   "description": "Node.js module for interacting with the NUClear network",
-  "main": "lib/NUClearNet.js",
+  "main": "index.js",
   "scripts": {
     "test": "node tests/test.js"
   },
@@ -23,7 +23,7 @@
   "homepage": "https://github.com/Fastcode/NUClearNet.js#readme",
   "gypfile": true,
   "dependencies": {
-    "bindings": "~1.2.1",
+    "bindings": "^1.2.1",
     "nan": "^2.0.0"
   }
 }

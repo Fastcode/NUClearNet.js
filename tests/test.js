@@ -15,9 +15,13 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-var NUClearNet = require('../lib/NUClearNet.js');
+var NUClearNet = require('../index.js').NUClearNet;
 
-var nu = new NUClearNet('nettest0', '239.226.152.162', 7447);
+var nu = new NUClearNet({
+    name: 'nettest0',
+    group: '239.226.152.162',
+    port: 7447
+});
 
 nu.on('nuclear_join', function (name) {
     console.log('Join', name);

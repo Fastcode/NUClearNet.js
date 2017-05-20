@@ -18,8 +18,7 @@
 #include "NetworkListener.hpp"
 
 NetworkListener::NetworkListener(Nan::Callback* callback, NetworkBinding* binding, std::vector<NUClear::fd_t> notifyfds)
-: Nan::AsyncProgressWorker(callback)
-, binding(binding) {
+    : Nan::AsyncProgressWorker(callback), binding(binding) {
 #ifdef _WIN32
     // Make an event that can shut it down
     notifier = WSACreateEvent();
@@ -45,12 +44,11 @@ NetworkListener::NetworkListener(Nan::Callback* callback, NetworkBinding* bindin
 #endif  // _WIN32
 }
 
-NetworkListener::~NetworkListener() {
-};
+NetworkListener::~NetworkListener(){};
 
 void NetworkListener::Execute(const ExecutionProgress& p) {
 
-    while(true) {
+    while (true) {
 #ifdef _WIN32
         // Wait for events and check for shutdown
         auto event = WSAWaitForMultipleEvents(fds.size(), fds.data(), false, WSA_INFINITE, false);
