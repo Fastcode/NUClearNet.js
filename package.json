@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Node.js module for interacting with the NUClear network",
   "main": "index.js",
+  "types": "index.d.ts",
   "scripts": {
     "test": "node tests/test.js"
   },

@@ -17,25 +17,43 @@
 
 var NUClearNet = require('../index.js').NUClearNet;
 
+var name = 'nuclearnet_js_test'
+
+if (process.argv.length > 2) {
+    name = process.argv[2]
+}
 var nu = new NUClearNet({
-    name: 'nettest0',
-    group: '239.226.152.162',
-    port: 7447
+    name: name,
 });
 
-nu.on('nuclear_join', function (name) {
-    console.log('Join', name);
+nu.on('nuclear_join', function (peer) {
+    console.log('Join', peer);
+
+    console.log('Send', peer.name, 'Unreliable');
+    nu.send({
+        type: stringName,
+        payload: new Buffer('Hello World from Javascript! (targeted UNRELIABLE)'),
+        target: peer.name,
+    });
+
+    console.log('Send', peer.name, 'Reliable');
+    nu.send({
+        type: stringName,
+        payload: new Buffer('Hello World from Javascript! (targeted RELIABLE)'),
+        target: peer.name,
+        reliable: true,
+    });
 });
 
-nu.on('nuclear_leave', function (name) {
-    console.log('Leave', name);
+nu.on('nuclear_leave', function (peer) {
+    console.log('Leave', peer);
 });
 
 var stringName = 'std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >';
 
-nu.on(stringName, function(source, data) {
-    console.log('Message from', source.name);
-    var string = data.toString();
+nu.on(stringName, function(packet) {
+    console.log('Message from', packet.peer.name);
+    var string = packet.payload.toString();
 
     if(string.length < 100) {
         console.log(string);
@@ -46,15 +64,15 @@ nu.on(stringName, function(source, data) {
 
 });
 
-setTimeout(function() {
-//     console.log('All Unreliable');
-    nu.send(stringName, new Buffer('Hello World from Javascript! (ALL UNRELIABLE)'));
-//     console.log('All Reliable');
-    nu.send(stringName, new Buffer('Hello World from Javascript! (ALL RELIABLE)'), undefined, true);
-//     console.log('nettest1 Unreliable');
-    nu.send(stringName, new Buffer('Hello World from Javascript! (nettest1 UNRELIABLE)'), 'nettest1');
-//     console.log('nettest1 Reliable');
-    nu.send(stringName, new Buffer('Hello World from Javascript! (nettest1 RELIABLE)'), 'nettest1', true);
-//     console.log('nettest1 Big');
-    nu.send(stringName, new Buffer(65535), 'nettest1');
-}, 2000);
+console.log('Sending All Unreliable');
+nu.send({
+    type: stringName,
+    payload: new Buffer('Hello World from Javascript! (ALL UNRELIABLE)'),
+});
+
+console.log('Sending All Reliable');
+nu.send({
+    type: stringName,
+    payload: new Buffer('Hello World from Javascript! (ALL RELIABLE)'),
+    reliable: true,
+});

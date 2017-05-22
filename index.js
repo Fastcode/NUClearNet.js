@@ -59,11 +59,13 @@ var NUClearNet = function(options) {
 
         if (eventName !== undefined) {
             this.emit(eventName, {
-                'name': name,
-                'address': address,
-                'port': port,
-
-            }, payload);
+                'peer': {
+                    'name': name,
+                    'address': address,
+                    'port': port,
+                },
+                'payload': payload,
+            }, payload)
         }
     }.bind(this));
 
@@ -111,8 +113,8 @@ NUClearNet.prototype.reset = function (options) {
     this._net.reset(name, group, port, mtu);
 };
 
-NUClearNet.prototype.send = function (typeName, data, target, reliable) {
-    this._net.send(typeName, data, target, reliable);
+NUClearNet.prototype.send = function (options) {
+    this._net.send(options.type, options.payload, options.target, options.reliable);
 };
 
 exports.NUClearNet = NUClearNet;
