@@ -22,9 +22,7 @@ var name = 'nuclearnet_js_test'
 if (process.argv.length > 2) {
     name = process.argv[2]
 }
-var nu = new NUClearNet({
-    name: name,
-});
+var nu = new NUClearNet();
 
 nu.on('nuclear_join', function (peer) {
     console.log('Join', peer);
@@ -62,6 +60,10 @@ nu.on(stringName, function(packet) {
         console.log(string[0]);
     }
 
+});
+
+nu.connect({
+    name: name,
 });
 
 console.log('Sending All Unreliable');

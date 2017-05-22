@@ -44,13 +44,13 @@ export interface NUClearNetPacket {
 
 export declare class NUClearNet {
 
-    public constructor(options: NUClearNetOptions)
+    public constructor()
 
     public on(event: 'nuclear_join'|'nuclear_leave', callback: (NUClearNetPeer) => void)
 
     public on(event: string|Buffer, callback: (NUClearNetPacket) => void)
 
-    public reset(options: NUClearNetOptions)
+    public connect(options: NUClearNetOptions)
 
     public send(options: NUClearNetSend)
 }

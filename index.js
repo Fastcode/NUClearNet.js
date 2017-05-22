@@ -21,7 +21,7 @@ var NetworkBinding = require('bindings')('nuclearnet');
 var util = require('util');
 var EventEmitter = require('events').EventEmitter;
 
-var NUClearNet = function(options) {
+var NUClearNet = function() {
     // Create a new network object
     this._net = new NetworkBinding();
     this._callbackMap = {};
@@ -62,9 +62,9 @@ var NUClearNet = function(options) {
                 'peer': {
                     'name': name,
                     'address': address,
-                    'port': port,
+                    'port': port
                 },
-                'payload': payload,
+                'payload': payload
             }, payload)
         }
     }.bind(this));
@@ -90,27 +90,23 @@ var NUClearNet = function(options) {
             this._net.process();
         }.bind(this), duration);
     }.bind(this));
-
-    setInterval(function() {
-        this._net.process();
-    }.bind(this), 1000);
-
-    // Connect to the network
-    this.reset(options);
-
-    // Run our first "process" to kick things off
-    this._net.process();
 };
 
 // Inherit from event emitter
 util.inherits(NUClearNet, EventEmitter);
 
-NUClearNet.prototype.reset = function (options) {
+NUClearNet.prototype.connect = function (options) {
+    // Default some of the options
     var name = options.name;
-    var group = options.group === undefined ? '239.226.152.162' : options.group
-    var port = options.port === undefined ? 7447 : options.port
-    var mtu = options.mtu === undefined ? 1500 : options.mtu
+    var group = options.group === undefined ? '239.226.152.162' : options.group;
+    var port = options.port === undefined ? 7447 : options.port;
+    var mtu = options.mtu === undefined ? 1500 : options.mtu;
+
+    // Connect to the network
     this._net.reset(name, group, port, mtu);
+
+    // Run our first "process" to kick things off
+    this._net.process();
 };
 
 NUClearNet.prototype.send = function (options) {
