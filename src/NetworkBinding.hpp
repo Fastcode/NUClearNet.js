@@ -18,10 +18,11 @@
 #ifndef NETWORKBINDING_H
 #define NETWORKBINDING_H
 
-#include <nan.h>
 #include "nuclear_bits/extension/network/NUClearNetwork.hpp"
+#include <nan.h>
 
-using NUClear::extension::network::NUClearNetwork;
+namespace NUClear {
+using extension::network::NUClearNetwork;
 
 class NetworkBinding : public Nan::ObjectWrap {
 public:
@@ -38,5 +39,5 @@ public:
 
     NUClearNetwork net;
 };
-
+}
 #endif  // NETWORKBINDING_H

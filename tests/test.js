@@ -57,4 +57,4 @@ setTimeout(function() {
     nu.send(stringName, new Buffer('Hello World from Javascript! (nettest1 RELIABLE)'), 'nettest1', true);
 //     console.log('nettest1 Big');
     nu.send(stringName, new Buffer(65535), 'nettest1');
-}, 2000)
+}, 2000);

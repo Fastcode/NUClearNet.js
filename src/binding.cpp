@@ -15,11 +15,19 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <nan.h>
 #include "NetworkBinding.hpp"
+#include <nan.h>
 
 void Init(v8::Local<v8::Object> exports, v8::Local<v8::Object> module) {
-    NetworkBinding::Init(exports, module);
+
+// If we are on windows, we need to WSAStartup
+#ifdef _WIN32
+    WORD version = MAKEWORD(2, 2);
+    WSADATA wsa_data;
+    WSAStartup(version, &wsa_data);
+#endif
+
+    NUClear::NetworkBinding::Init(exports, module);
 }
 
 NODE_MODULE(nuclearnet, Init)

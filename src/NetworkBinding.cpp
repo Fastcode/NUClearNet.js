@@ -19,7 +19,9 @@
 #include "NetworkListener.hpp"
 #include "nuclear_bits/util/serialise/xxhash.h"
 
-using NUClear::extension::network::NUClearNetwork;
+namespace NUClear {
+
+using extension::network::NUClearNetwork;
 
 NetworkBinding::NetworkBinding() {}
 
@@ -40,7 +42,6 @@ void NetworkBinding::Hash(const Nan::FunctionCallbackInfo<v8::Value>& info) {
 }
 
 void NetworkBinding::Send(const Nan::FunctionCallbackInfo<v8::Value>& info) {
-
     // info[0] == hash
     // info[1] == payload
     // info[2] == target
@@ -101,7 +102,6 @@ void NetworkBinding::Send(const Nan::FunctionCallbackInfo<v8::Value>& info) {
 }
 
 void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
-
     if (info[0]->IsString() && info[1]->IsFunction()) {
 
         std::string event    = *Nan::Utf8String(info[0]);
@@ -122,12 +122,12 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
                 std::memset(c, 0, sizeof(c));
                 switch (t.target.sock.sa_family) {
                     case AF_INET:
-                        inet_ntop(t.target.sock.sa_family, &t.target.ipv4.sin_addr, c, sizeof(c));
+                        inet_ntop(t.target.sock.sa_family, const_cast<in_addr*>(&t.target.ipv4.sin_addr), c, sizeof(c));
                         port = ntohs(t.target.ipv4.sin_port);
                         break;
 
                     case AF_INET6:
-                        inet_ntop(t.target.sock.sa_family, &t.target.ipv6.sin6_addr, c, sizeof(c));
+                        inet_ntop(t.target.sock.sa_family, const_cast<in6_addr*>(&t.target.ipv6.sin6_addr), c, sizeof(c));
                         port = ntohs(t.target.ipv6.sin6_port);
                         break;
                 }
@@ -151,21 +151,24 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
 
                 std::string name = t.name;
                 std::string address;
-                uint16_t port;
+                uint16_t port = 0;
 
                 // Extract the IP address and port
                 char c[255];
                 std::memset(c, 0, sizeof(c));
                 switch (t.target.sock.sa_family) {
                     case AF_INET:
-                        inet_ntop(t.target.sock.sa_family, &t.target.ipv4.sin_addr, c, sizeof(c));
+                        inet_ntop(t.target.sock.sa_family, const_cast<in_addr*>(&t.target.ipv4.sin_addr), c, sizeof(c));
                         port = ntohs(t.target.ipv4.sin_port);
                         break;
 
                     case AF_INET6:
-                        inet_ntop(t.target.sock.sa_family, &t.target.ipv6.sin6_addr, c, sizeof(c));
+                        inet_ntop(t.target.sock.sa_family, const_cast<in6_addr*>(&t.target.ipv6.sin6_addr), c, sizeof(c));
                         port = ntohs(t.target.ipv6.sin6_port);
                         break;
+
+                    default:
+                        Nan::ThrowError("The system has a corrupted network peer record.");
                 }
                 address = c;
 
@@ -188,7 +191,7 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
                 Nan::HandleScope scope;
 
                 using namespace std::chrono;
-                int ms = duration_cast<milliseconds>(t - steady_clock::now()).count();
+                int ms = duration_cast<std::chrono::duration<int, std::milli>>(t - steady_clock::now()).count();
                 ms++;  // Add 1 to account for any funky rounding
 
                 v8::Local<v8::Integer> v  = Nan::New<v8::Integer>(ms);
@@ -216,7 +219,7 @@ void NetworkBinding::Reset(const Nan::FunctionCallbackInfo<v8::Value>& info) {
 
     // MTU number
     if (info[3]->IsNumber()) {
-        network_mtu = info[3]->IntegerValue();
+        network_mtu = uint16_t(info[3]->IntegerValue());
     }
     else {
         Nan::ThrowError("MTU must be a number");
@@ -224,7 +227,7 @@ void NetworkBinding::Reset(const Nan::FunctionCallbackInfo<v8::Value>& info) {
 
     // Port number
     if (info[2]->IsNumber()) {
-        port = info[2]->IntegerValue();
+        port = uint16_t(info[2]->IntegerValue());
     }
     else {
         Nan::ThrowError("Port must be a number");
@@ -309,11 +312,10 @@ void NetworkBinding::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     }
     // Invoked as function: `MyObject(...)` convert to construct call
     else {
-        const int argc                  = 0;
-        v8::Local<v8::Value> argv[argc] = {};
         v8::Local<v8::Function> cons    = Nan::New<v8::Function>(constructor);
-        info.GetReturnValue().Set(Nan::NewInstance(cons, argc, argv).ToLocalChecked());
+        info.GetReturnValue().Set(Nan::NewInstance(cons, 0, nullptr).ToLocalChecked());
     }
 }
 
 Nan::Persistent<v8::Function> NetworkBinding::constructor;
+}

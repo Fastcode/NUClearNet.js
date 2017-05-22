@@ -18,9 +18,10 @@
 #ifndef NETWORKLISTENER_H
 #define NETWORKLISTENER_H
 
-#include <nan.h>
 #include "NetworkBinding.hpp"
+#include <nan.h>
 
+namespace NUClear {
 class NetworkListener : public Nan::AsyncProgressWorker {
 public:
     NetworkListener(Nan::Callback* callback, NetworkBinding* binding, std::vector<NUClear::fd_t> notifyfds);
@@ -39,7 +40,7 @@ public:
     NUClear::fd_t notify_send;
     std::vector<pollfd> fds;
 #endif  // _WIN32
-
 };
 
 #endif  // NETWORKLISTENER_H
+}

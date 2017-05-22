@@ -17,6 +17,11 @@
                 '<!(node -e "require(\'nan\')")',
                 'src/nuclear/src/include'
             ],
+            'msvs_settings': {
+                'VCCLCompilerTool': {
+                    'ExceptionHandling': 1
+                }
+            },
             'conditions': [
                 [
                     'OS=="linux"', {

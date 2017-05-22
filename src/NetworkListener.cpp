@@ -17,11 +17,14 @@
 
 #include "NetworkListener.hpp"
 
+namespace NUClear {
 NetworkListener::NetworkListener(Nan::Callback* callback, NetworkBinding* binding, std::vector<NUClear::fd_t> notifyfds)
     : Nan::AsyncProgressWorker(callback), binding(binding) {
 #ifdef _WIN32
     // Make an event that can shut it down
     notifier = WSACreateEvent();
+    WSAResetEvent(notifier);
+    fds.push_back(notifier);
 
     // Make event and link it up
     for (auto& fd : notifyfds) {
@@ -52,7 +55,9 @@ void NetworkListener::Execute(const ExecutionProgress& p) {
 #ifdef _WIN32
         // Wait for events and check for shutdown
         auto event = WSAWaitForMultipleEvents(fds.size(), fds.data(), false, WSA_INFINITE, false);
-        if (event == WSA_WAIT_EVENT_0) break;
+        if (event == WSA_WAIT_EVENT_0) {
+            break;
+        }
 #else
         // Wait for events and check for shutdown
         poll(fds.data(), static_cast<nfds_t>(fds.size()), -1);
@@ -79,4 +84,5 @@ void NetworkListener::Destroy() {
     char val = 0;
     write(notify_send, &val, 1);
 #endif  // _WIN32
+}
 }
