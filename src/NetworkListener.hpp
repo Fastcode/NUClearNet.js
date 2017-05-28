@@ -25,19 +25,15 @@ namespace NUClear {
 class NetworkListener : public Nan::AsyncProgressWorker {
 public:
     NetworkListener(Nan::Callback* callback, NetworkBinding* binding, std::vector<NUClear::fd_t> notifyfds);
-    virtual ~NetworkListener();
     void Execute(const ExecutionProgress& p);
     void HandleProgressCallback(const char*, size_t);
-    void Destroy();
 
     NetworkBinding* binding;
 
 #ifdef _WIN32
-    WSAEVENT notifier;
-    std::vector<WSAEVENT> fds;
+    std::vector<WSAEVENT> events;
+    std::vector<SOCKET> fds;
 #else
-    NUClear::fd_t notify_recv;
-    NUClear::fd_t notify_send;
     std::vector<pollfd> fds;
 #endif  // _WIN32
 };

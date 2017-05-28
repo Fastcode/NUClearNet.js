@@ -66,6 +66,11 @@ nu.connect({
     name: name,
 });
 
+process.on('SIGINT', () => {
+    console.log('Disconnecting');
+    nu.disconnect();
+});
+
 console.log('Sending All Unreliable');
 nu.send({
     type: stringName,
