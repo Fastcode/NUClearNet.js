@@ -25,6 +25,7 @@ var NUClearNet = function() {
     // Create a new network object
     this._net = new NetworkBinding();
     this._callbackMap = {};
+    this._active = false;
 
     // We have started listening to a new type
     this.on('newListener', function (event) {
@@ -87,7 +88,7 @@ var NUClearNet = function() {
 
     this._net.on('wait', function(duration) {
         setTimeout(function() {
-            this._net.process();
+            this.active && this._net.process();
         }.bind(this), duration);
     }.bind(this));
 };
@@ -103,14 +104,25 @@ NUClearNet.prototype.connect = function (options) {
     var mtu = options.mtu === undefined ? 1500 : options.mtu;
 
     // Connect to the network
+    this._active = true;
     this._net.reset(name, group, port, mtu);
 
     // Run our first "process" to kick things off
     this._net.process();
 };
 
+NUClearNet.prototype.disconnect = function() {
+    this._active = false;
+    this._net.shutdown();
+};
+
 NUClearNet.prototype.send = function (options) {
-    this._net.send(options.type, options.payload, options.target, options.reliable);
+    if (!this._active) {
+        throw new Error("The network is not currently connected");
+    }
+    else {
+        this._net.send(options.type, options.payload, options.target, options.reliable);
+    }
 };
 
 exports.NUClearNet = NUClearNet;
