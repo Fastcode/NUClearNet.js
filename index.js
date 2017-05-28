@@ -26,6 +26,7 @@ var NUClearNet = function() {
     this._net = new NetworkBinding();
     this._callbackMap = {};
     this._active = false;
+    this._waiting = 0;
 
     // We have started listening to a new type
     this.on('newListener', function (event) {
@@ -54,47 +55,65 @@ var NUClearNet = function() {
     }.bind(this));
 
     // Bind our callback functions
-    this._net.on('packet', function(name, address, port, hash, payload) {
-
-        var eventName = this._callbackMap[hash];
-
-        if (eventName !== undefined) {
-            this.emit(eventName, {
-                'peer': {
-                    'name': name,
-                    'address': address,
-                    'port': port
-                },
-                'payload': payload
-            }, payload)
-        }
-    }.bind(this));
-
-    this._net.on('join', function(name, address, port) {
-        this.emit('nuclear_join', {
-            'name': name,
-            'address': address,
-            'port': port
-        });
-    }.bind(this));
-
-    this._net.on('leave', function(name, address, port) {
-        this.emit('nuclear_leave', {
-            'name': name,
-            'address': address,
-            'port': port
-        });
-    }.bind(this));
-
-    this._net.on('wait', function(duration) {
-        setTimeout(function() {
-            this.active && this._net.process();
-        }.bind(this), duration);
-    }.bind(this));
+    this._net.on('packet', this._onPacket.bind(this));
+    this._net.on('join', this._onJoin.bind(this));
+    this._net.on('leave', this._onLeave.bind(this));
+    this._net.on('wait', this._onWait.bind(this));
 };
 
 // Inherit from event emitter
 util.inherits(NUClearNet, EventEmitter);
+
+NUClearNet.prototype._onPacket = function(name, address, port, hash, payload) {
+
+    var eventName = this._callbackMap[hash];
+
+    if (eventName !== undefined) {
+        this.emit(eventName, {
+            'peer': {
+                'name': name,
+                'address': address,
+                'port': port
+            },
+            'payload': payload
+        }, payload)
+    }
+};
+
+NUClearNet.prototype._onJoin = function(name, address, port) {
+    this.emit('nuclear_join', {
+        'name': name,
+        'address': address,
+        'port': port
+    });
+};
+
+NUClearNet.prototype._onLeave = function(name, address, port) {
+    this.emit('nuclear_leave', {
+        'name': name,
+        'address': address,
+        'port': port
+    });
+};
+
+NUClearNet.prototype._onWait = function(duration) {
+    ++this._waiting;
+    setTimeout(function() {
+        --this._waiting;
+
+        // Only process if we're active
+        if (this._active) {
+            this._net.process();
+        }
+
+        // Sometimes due to weird timing artifacts we run out of these
+        // Restart in 100ms!
+        if (this._active && this._waiting === 0) {
+            this._onWait(100);
+        }
+    }.bind(this), duration);
+}
+
 
 NUClearNet.prototype.connect = function (options) {
     // Default some of the options

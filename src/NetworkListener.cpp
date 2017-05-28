@@ -18,7 +18,8 @@
 #include "NetworkListener.hpp"
 
 namespace NUClear {
-NetworkListener::NetworkListener(NetworkBinding* binding) : Nan::AsyncProgressWorker(nullptr), binding(binding) {
+NetworkListener::NetworkListener(NetworkBinding* binding)
+: Nan::AsyncProgressWorker(new Nan::Callback()), binding(binding) {
 
     std::vector<NUClear::fd_t> notifyfds = binding->net.listen_fds();
 
@@ -59,7 +60,7 @@ void NetworkListener::Execute(const ExecutionProgress& p) {
                 run = false;
             }
             else if ((wsne.lNetworkEvents & FD_READ) != 0) {
-                data = false;
+                data = true;
             }
         }
 #else
@@ -86,7 +87,7 @@ void NetworkListener::Execute(const ExecutionProgress& p) {
 void NetworkListener::HandleProgressCallback(const char*, size_t) {
     Nan::HandleScope scope;
 
-    // Call what should be process
+    // Call process when there is data
     binding->net.process();
 }
 
