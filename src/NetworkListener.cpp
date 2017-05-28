@@ -18,8 +18,10 @@
 #include "NetworkListener.hpp"
 
 namespace NUClear {
-NetworkListener::NetworkListener(Nan::Callback* callback, NetworkBinding* binding, std::vector<NUClear::fd_t> notifyfds)
-    : Nan::AsyncProgressWorker(callback), binding(binding) {
+NetworkListener::NetworkListener(NetworkBinding* binding) : Nan::AsyncProgressWorker(nullptr), binding(binding) {
+
+    std::vector<NUClear::fd_t> notifyfds = binding->net.listen_fds();
+
 #ifdef _WIN32
     // Make event and link it up
     for (auto& fd : notifyfds) {
@@ -40,34 +42,42 @@ NetworkListener::NetworkListener(Nan::Callback* callback, NetworkBinding* bindin
 void NetworkListener::Execute(const ExecutionProgress& p) {
     bool run = true;
     while (run) {
+        bool data = false;
+
 #ifdef _WIN32
         // Wait for events and check for shutdown
         auto event = WSAWaitForMultipleEvents(events.size(), events.data(), false, WSA_INFINITE, false);
 
         if (event >= WSA_WAIT_EVENT_0 && event < WSA_WAIT_EVENT_0 + events.size()) {
-            auto& e = events[event - WSA_WAIT_EVENT_0];
+            auto& e  = events[event - WSA_WAIT_EVENT_0];
             auto& fd = fds[event - WSA_WAIT_EVENT_0];
 
             WSANETWORKEVENTS wsne;
             WSAEnumNetworkEvents(fd, e, &wsne);
 
-            if((wsne.lNetworkEvents & FD_CLOSE) != 0) {
+            if ((wsne.lNetworkEvents & FD_CLOSE) != 0) {
                 run = false;
+            }
+            else if ((wsne.lNetworkEvents & FD_READ) != 0) {
+                data = false;
             }
         }
 #else
         // Wait for events and check for shutdown
-        poll(fds.data(), static_cast<nfds_t>(fds.size()), -1);
+        poll(fds.data(), static_cast<nfds_t>(fds.size()), 500);
 
         // Check if the connections closed
         for (const auto& fd : fds) {
             if ((fd.revents & POLLNVAL) != 0) {
                 run = false;
             }
+            else if ((fd.revents & POLLIN) != 0) {
+                data = true;
+            }
         }
 #endif  // _WIN32
         // Notify the system something happened if it's running
-        if (run) {
+        if (run && data) {
             p.Signal();
         }
     }
@@ -79,4 +89,9 @@ void NetworkListener::HandleProgressCallback(const char*, size_t) {
     // Call what should be process
     binding->net.process();
 }
-}
+
+void NetworkListener::HandleOKCallback() {}
+
+void NetworkListener::HandleErrorCallback() {}
+
+}  // namespace NUClear

@@ -127,7 +127,8 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
                         break;
 
                     case AF_INET6:
-                        inet_ntop(t.target.sock.sa_family, const_cast<in6_addr*>(&t.target.ipv6.sin6_addr), c, sizeof(c));
+                        inet_ntop(
+                            t.target.sock.sa_family, const_cast<in6_addr*>(&t.target.ipv6.sin6_addr), c, sizeof(c));
                         port = ntohs(t.target.ipv6.sin6_port);
                         break;
                 }
@@ -163,12 +164,12 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
                         break;
 
                     case AF_INET6:
-                        inet_ntop(t.target.sock.sa_family, const_cast<in6_addr*>(&t.target.ipv6.sin6_addr), c, sizeof(c));
+                        inet_ntop(
+                            t.target.sock.sa_family, const_cast<in6_addr*>(&t.target.ipv6.sin6_addr), c, sizeof(c));
                         port = ntohs(t.target.ipv6.sin6_port);
                         break;
 
-                    default:
-                        Nan::ThrowError("The system has a corrupted network peer record.");
+                    default: Nan::ThrowError("The system has a corrupted network peer record.");
                 }
                 address = c;
 
@@ -254,7 +255,7 @@ void NetworkBinding::Reset(const Nan::FunctionCallbackInfo<v8::Value>& info) {
         NetworkBinding* bind = ObjectWrap::Unwrap<NetworkBinding>(info.Holder());
         bind->net.reset(name, group, port, network_mtu);
 
-        Nan::AsyncQueueWorker(new NetworkListener(new Nan::Callback(), bind, bind->net.listen_fds()));
+        Nan::AsyncQueueWorker(new NetworkListener(bind));
     }
     catch (const std::exception& ex) {
         Nan::ThrowError(ex.what());
@@ -312,10 +313,11 @@ void NetworkBinding::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     }
     // Invoked as function: `MyObject(...)` convert to construct call
     else {
-        v8::Local<v8::Function> cons    = Nan::New<v8::Function>(constructor);
+        v8::Local<v8::Function> cons = Nan::New<v8::Function>(constructor);
         info.GetReturnValue().Set(Nan::NewInstance(cons, 0, nullptr).ToLocalChecked());
     }
 }
 
 Nan::Persistent<v8::Function> NetworkBinding::constructor;
-}
+
+}  // namespace NUClear

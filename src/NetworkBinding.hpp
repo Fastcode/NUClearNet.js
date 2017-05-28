@@ -22,7 +22,6 @@
 #include <nan.h>
 
 namespace NUClear {
-using extension::network::NUClearNetwork;
 
 class NetworkBinding : public Nan::ObjectWrap {
 public:
@@ -37,7 +36,9 @@ public:
     static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
     static Nan::Persistent<v8::Function> constructor;
 
-    NUClearNetwork net;
+    extension::network::NUClearNetwork net;
 };
-}
+
+}  // namespace NUClear
+
 #endif  // NETWORKBINDING_H

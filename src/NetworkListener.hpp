@@ -22,11 +22,14 @@
 #include <nan.h>
 
 namespace NUClear {
+
 class NetworkListener : public Nan::AsyncProgressWorker {
 public:
-    NetworkListener(Nan::Callback* callback, NetworkBinding* binding, std::vector<NUClear::fd_t> notifyfds);
+    NetworkListener(NetworkBinding* binding);
     void Execute(const ExecutionProgress& p);
     void HandleProgressCallback(const char*, size_t);
+    void HandleOKCallback();
+    void HandleErrorCallback();
 
     NetworkBinding* binding;
 
@@ -38,5 +41,5 @@ public:
 #endif  // _WIN32
 };
 
+}  // namespace NUClear
 #endif  // NETWORKLISTENER_H
-}

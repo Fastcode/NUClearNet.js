@@ -17,6 +17,9 @@
 
 var NUClearNet = require('../index.js').NUClearNet;
 
+var SegfaultHandler = require('segfault-handler');
+SegfaultHandler.registerHandler("crash.log");
+
 var name = 'nuclearnet_js_test'
 
 if (process.argv.length > 2) {
