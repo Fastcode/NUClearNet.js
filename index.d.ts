@@ -46,9 +46,11 @@ export declare class NUClearNet {
 
     public constructor()
 
-    public on(event: 'nuclear_join'|'nuclear_leave', callback: (peer: NUClearNetPeer) => void): void
+    public on(event: 'nuclear_join'|'nuclear_leave', callback: (peer: NUClearNetPeer) => void): this
 
-    public on(event: string|Buffer, callback: (packet: NUClearNetPacket) => void): void
+    public on(event: string, callback: (packet: NUClearNetPacket) => void): this
+
+    public removeListener(event: string, listener: Function): this
 
     public connect(options: NUClearNetOptions): void
 
