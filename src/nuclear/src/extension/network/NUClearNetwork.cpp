@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2013-2016 Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
+ * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
+ *               2014-2017 Trent Houliston <trent@houliston.me>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -37,6 +38,12 @@ namespace extension {
             }
         }
 
+        NUClearNetwork::PacketQueue::PacketTarget::PacketTarget(std::weak_ptr<NetworkTarget> target,
+                                                                const std::vector<uint8_t>& acked)
+            : target(target), acked(acked), last_send(std::chrono::steady_clock::now()) {}
+
+        NUClearNetwork::PacketQueue::PacketQueue() : targets(), header(), payload() {}
+
         NUClearNetwork::NUClearNetwork()
             : multicast_target()
             , unicast_fd(-1)
@@ -49,6 +56,7 @@ namespace extension {
             , leave_callback()
             , next_event_callback()
             , last_announce(std::chrono::seconds(0))
+            , next_event(std::chrono::seconds(0))
             , target_mutex()
             , send_queue_mutex()
             , send_queue()
@@ -62,7 +70,7 @@ namespace extension {
         }
 
         void NUClearNetwork::set_packet_callback(
-            std::function<void(const NetworkTarget&, const uint64_t&, std::vector<char>&&)> f) {
+            std::function<void(const NetworkTarget&, const uint64_t&, const bool&, std::vector<char>&&)> f) {
             packet_callback = f;
         }
 
@@ -573,8 +581,7 @@ namespace extension {
 
             // First validate this is a NUClear network packet we can read (a version 2 NUClear packet)
             if (payload.size() >= sizeof(PacketHeader) && payload[0] == '\xE2' && payload[1] == '\x98'
-                && payload[2] == '\xA2'
-                && payload[3] == 0x02) {
+                && payload[2] == '\xA2' && payload[3] == 0x02) {
 
                 // This is a real packet! get our header information
                 const PacketHeader& header = *reinterpret_cast<const PacketHeader*>(payload.data());
@@ -745,7 +752,7 @@ namespace extension {
                                     remote->recent_packets[++remote->recent_packets_index] = packet.packet_id;
                                 }
 
-                                packet_callback(*remote, packet.hash, std::move(out));
+                                packet_callback(*remote, packet.hash, packet.reliable, std::move(out));
                             }
                             else {
                                 std::lock_guard<std::mutex> lock(remote->assemblers_mutex);
@@ -841,7 +848,7 @@ namespace extension {
                                     }
 
                                     // Send our assembled data packet
-                                    packet_callback(*remote, packet.hash, std::move(out));
+                                    packet_callback(*remote, packet.hash, packet.reliable, std::move(out));
 
                                     // If the packet was reliable add that it was recently received
                                     if (packet.reliable) {
@@ -1075,11 +1082,7 @@ namespace extension {
                 for (auto it = range.first; it != range.second; ++it) {
 
                     // Add this guy to the queue
-                    PacketQueue::PacketTarget target;
-                    target.last_send = std::chrono::steady_clock::now();
-                    target.acked     = acks;
-                    target.target    = it->second;
-                    queue.targets.push_back(target);
+                    queue.targets.emplace_back(it->second, acks);
 
                     // The next time we should check for a timeout
                     auto next_timeout = std::chrono::steady_clock::now() + it->second->round_trip_time;

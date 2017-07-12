@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2013-2016 Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
+ * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
+ *               2014-2017 Trent Houliston <trent@houliston.me>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -132,7 +133,8 @@ namespace extension {
              *
              * @param f the callback function
              */
-            void set_packet_callback(std::function<void(const NetworkTarget&, const uint64_t&, std::vector<char>&&)> f);
+            void set_packet_callback(
+                std::function<void(const NetworkTarget&, const uint64_t&, const bool&, std::vector<char>&&)> f);
 
             /**
              * @brief Set the callback to use when a node joins the network
@@ -190,6 +192,10 @@ namespace extension {
             struct PacketQueue {
 
                 struct PacketTarget {
+
+                    /// Constructor a new PacketTarget
+                    PacketTarget(std::weak_ptr<NetworkTarget> target, const std::vector<uint8_t>& acked);
+
                     /// The target we are sending this packet to
                     std::weak_ptr<NetworkTarget> target;
 
@@ -199,6 +205,9 @@ namespace extension {
                     /// When we last sent data to this client
                     std::chrono::steady_clock::time_point last_send;
                 };
+
+                /// Default constructor for the PacketQueue
+                PacketQueue();
 
                 /// The remote targets that want this packet
                 std::list<PacketTarget> targets;
@@ -296,7 +305,8 @@ namespace extension {
             std::atomic<uint16_t> packet_id_source;
 
             /// The callback to execute when a data packet is completed
-            std::function<void(const NetworkTarget&, const uint64_t&, std::vector<char>&&)> packet_callback;
+            std::function<void(const NetworkTarget&, const uint64_t&, const bool&, std::vector<char>&&)>
+                packet_callback;
             /// The callback to execute when a node joins the network
             std::function<void(const NetworkTarget&)> join_callback;
             /// The callback to execute when a node leaves the network
