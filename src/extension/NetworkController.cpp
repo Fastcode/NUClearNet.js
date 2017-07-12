@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2013-2016 Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
+ * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
+ *               2014-2017 Trent Houliston <trent@houliston.me>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -43,12 +44,14 @@ namespace extension {
         // Set our function callback
         network.set_packet_callback([this](const network::NUClearNetwork::NetworkTarget& remote,
                                            const uint64_t& hash,
+                                           const bool& reliable,
                                            std::vector<char>&& payload) {
 
             // Construct our NetworkSource information
             dsl::word::NetworkSource src;
-            src.name    = remote.name;
-            src.address = remote.target;
+            src.name     = remote.name;
+            src.address  = remote.target;
+            src.reliable = reliable;
 
             // Store in our thread local cache
             dsl::store::ThreadStore<std::vector<char>>::value        = &payload;
@@ -91,7 +94,7 @@ namespace extension {
             l->address = remote.target;
             emit(l);
         });
-            
+
         // Set our event timer callback
         network.set_next_event_callback([this](std::chrono::steady_clock::time_point t) {
             emit<Scope::DELAY>(std::make_unique<ProcessNetwork>(), t - std::chrono::steady_clock::now());
@@ -154,14 +157,12 @@ namespace extension {
             network.reset(name, multicast_group, multicast_port, mtu);
 
             // Execution handle
-            process_handle = on<Trigger<ProcessNetwork>>().then("Network processing", [this] {
-                network.process();
-            });
+            process_handle = on<Trigger<ProcessNetwork>>().then("Network processing", [this] { network.process(); });
 
             for (auto& fd : network.listen_fds()) {
                 listen_handles.push_back(on<IO>(fd, IO::READ).then("Packet", [this] { network.process(); }));
             }
         });
     }
-}
-}
+}  // namespace extension
+}  // namespace NUClear

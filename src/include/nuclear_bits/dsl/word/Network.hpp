@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2013-2016 Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
+ * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
+ *               2014-2017 Trent Houliston <trent@houliston.me>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -20,8 +21,8 @@
 
 #include "nuclear_bits/dsl/store/ThreadStore.hpp"
 #include "nuclear_bits/dsl/trait/is_transient.hpp"
-#include "nuclear_bits/util/serialise/Serialise.hpp"
 #include "nuclear_bits/util/network/sock_t.hpp"
+#include "nuclear_bits/util/serialise/Serialise.hpp"
 
 namespace NUClear {
 namespace dsl {
@@ -29,7 +30,10 @@ namespace dsl {
 
         template <typename T>
         struct NetworkData : public std::shared_ptr<T> {
-            using std::shared_ptr<T>::shared_ptr;
+            NetworkData() : std::shared_ptr<T>() {}
+            NetworkData(T* ptr) : std::shared_ptr<T>(ptr) {}
+            NetworkData(const std::shared_ptr<T>& ptr) : std::shared_ptr<T>(ptr) {}
+            NetworkData(std::shared_ptr<T>&& ptr) : std::shared_ptr<T>(ptr) {}
         };
 
         struct NetworkSource {
@@ -37,6 +41,7 @@ namespace dsl {
 
             std::string name;
             util::network::sock_t address;
+            bool reliable;
         };
 
         struct NetworkListen {
@@ -102,7 +107,7 @@ namespace dsl {
                 else {
 
                     // Return invalid data
-                    return std::make_tuple(std::shared_ptr<NetworkSource>(nullptr), std::shared_ptr<T>(nullptr));
+                    return std::make_tuple(std::shared_ptr<NetworkSource>(nullptr), NetworkData<T>(nullptr));
                 }
             }
         };
