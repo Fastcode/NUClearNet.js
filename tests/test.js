@@ -53,7 +53,7 @@ nu.on('nuclear_leave', function (peer) {
 var stringName = 'std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >';
 
 nu.on(stringName, function(packet) {
-    console.log('Message from', packet.peer.name);
+    console.log(packet.reliable ? 'Reliable' : 'Unreliable', 'message from', packet.peer.name);
     var string = packet.payload.toString();
 
     if(string.length < 100) {
@@ -62,7 +62,6 @@ nu.on(stringName, function(packet) {
     else {
         console.log(string[0]);
     }
-
 });
 
 nu.connect({

@@ -64,7 +64,7 @@ var NUClearNet = function() {
 // Inherit from event emitter
 util.inherits(NUClearNet, EventEmitter);
 
-NUClearNet.prototype._onPacket = function(name, address, port, hash, payload) {
+NUClearNet.prototype._onPacket = function(name, address, port, reliable, hash, payload) {
 
     var eventName = this._callbackMap[hash];
 
@@ -75,7 +75,8 @@ NUClearNet.prototype._onPacket = function(name, address, port, hash, payload) {
                 'address': address,
                 'port': port
             },
-            'payload': payload
+            'payload': payload,
+            'reliable': reliable
         }, payload)
     }
 };

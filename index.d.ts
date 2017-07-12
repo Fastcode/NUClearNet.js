@@ -40,6 +40,7 @@ export interface NUClearNetPeer {
 export interface NUClearNetPacket {
     peer: NUClearNetPeer
     payload: Buffer
+    reliable: boolean
 }
 
 export declare class NUClearNet {

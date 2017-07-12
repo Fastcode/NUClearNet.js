@@ -110,7 +110,7 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
 
         if (event == "packet") {
             bind->net.set_packet_callback([cb = std::move(cb)](
-                const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, std::vector<char>&& payload) {
+                const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, const bool& reliable, std::vector<char>&& payload) {
                 Nan::HandleScope scope;
 
                 std::string name = t.name;
@@ -134,16 +134,17 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
                 }
                 address = c;
 
-                v8::Local<v8::Value> argv[5] = {
+                v8::Local<v8::Value> argv[6] = {
                     Nan::New<v8::String>(name).ToLocalChecked().As<v8::Value>(),
                     Nan::New<v8::String>(address).ToLocalChecked().As<v8::Value>(),
                     Nan::New<v8::Integer>(port).As<v8::Value>(),
+                    Nan::New<v8::Boolean>(reliable).As<v8::Value>(),
                     Nan::CopyBuffer(reinterpret_cast<const char*>(&hash), sizeof(uint64_t))
                         .ToLocalChecked()
                         .As<v8::Value>(),
                     Nan::CopyBuffer(payload.data(), payload.size()).ToLocalChecked().As<v8::Value>()};
 
-                cb->Call(5, argv);
+                cb->Call(6, argv);
             });
         }
         else if (event == "join" || event == "leave") {
