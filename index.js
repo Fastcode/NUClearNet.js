@@ -76,6 +76,8 @@ NUClearNet.prototype._onPacket = function(name, address, port, reliable, hash, p
                 'port': port
             },
             'payload': payload,
+            'type': eventName,
+            'hash': hash,
             'reliable': reliable
         }, payload)
     }
@@ -115,6 +117,9 @@ NUClearNet.prototype._onWait = function(duration) {
     }.bind(this), duration);
 }
 
+NUClearNet.prototype.hash = function(data) {
+    return this._net.hash(data);
+};
 
 NUClearNet.prototype.connect = function (options) {
     // Default some of the options

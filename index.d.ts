@@ -39,6 +39,8 @@ export interface NUClearNetPeer {
 
 export interface NUClearNetPacket {
     peer: NUClearNetPeer
+    type: string
+    hash: Buffer
     payload: Buffer
     reliable: boolean
 }
@@ -50,6 +52,8 @@ export declare class NUClearNet {
     public on(event: 'nuclear_join'|'nuclear_leave', callback: (peer: NUClearNetPeer) => void): this
 
     public on(event: string, callback: (packet: NUClearNetPacket) => void): this
+
+    public hash(data: string): Buffer
 
     public removeListener(event: string, listener: Function): this
 
