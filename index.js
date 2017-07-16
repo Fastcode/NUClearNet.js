@@ -32,6 +32,7 @@ var NUClearNet = function() {
     this.on('newListener', function (event) {
         if(event !== 'nuclear_join'
          && event !== 'nuclear_leave'
+         && event !== 'nuclear_packet'
          && event !== 'newListener'
          && event !== 'removeListener'
          && this.listenerCount(event) === 0) {
@@ -45,6 +46,7 @@ var NUClearNet = function() {
         // If we are no longer listening to this type
         if(event !== 'nuclear_join'
          && event !== 'nuclear_leave'
+         && event !== 'nuclear_packet'
          && event !== 'newListener'
          && event !== 'removeListener'
          && this.listenerCount(event) === 0) {
@@ -68,18 +70,25 @@ NUClearNet.prototype._onPacket = function(name, address, port, reliable, hash, p
 
     var eventName = this._callbackMap[hash];
 
+    // Construct our packet
+    var packet = {
+        'peer': {
+            'name': name,
+            'address': address,
+            'port': port
+        },
+        'payload': payload,
+        'type': eventName,
+        'hash': hash,
+        'reliable': reliable
+    };
+
+    // Emit via nuclear_packet for people listening to everything
+    this.emit('nuclear_packet', packet)
+
+    // If someone was listening to this send it to them specifically too
     if (eventName !== undefined) {
-        this.emit(eventName, {
-            'peer': {
-                'name': name,
-                'address': address,
-                'port': port
-            },
-            'payload': payload,
-            'type': eventName,
-            'hash': hash,
-            'reliable': reliable
-        }, payload)
+        this.emit(eventName, packet)
     }
 };
 

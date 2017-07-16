@@ -51,6 +51,8 @@ export declare class NUClearNet {
 
     public on(event: 'nuclear_join'|'nuclear_leave', callback: (peer: NUClearNetPeer) => void): this
 
+    public on(event: 'nuclear_packet', callback: (packet: NUClearNetPacket) => void): this
+
     public on(event: string, callback: (packet: NUClearNetPacket) => void): this
 
     public hash(data: string): Buffer
