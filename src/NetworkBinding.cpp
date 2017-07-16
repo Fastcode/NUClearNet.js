@@ -82,7 +82,7 @@ void NetworkBinding::Send(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     }
     // Otherwise try to interpret it as a hash
     else {
-        Nan::TypedArrayContents<uint64_t> h(info[1]);
+        Nan::TypedArrayContents<uint64_t> h(info[0]);
         if (h.length() == 1) {
             hash = (*h)[0];
         }
