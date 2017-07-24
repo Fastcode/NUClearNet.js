@@ -37,21 +37,26 @@ public:
             std::cout << "Connected To" << std::endl;
             std::cout << "\tName: " << join.name << std::endl;
 
-            char c[255];
-            std::memset(c, 0, sizeof(c));
+            char c[255] = {};
 
             switch (join.address.sock.sa_family) {
                 case AF_INET:
 
                     std::cout << "\tAddress: "
-                              << inet_ntop(join.address.sock.sa_family, &join.address.ipv4.sin_addr, c, sizeof(c))
+                              << inet_ntop(join.address.sock.sa_family,
+                                           &join.address.ipv4.sin_addr,
+                                           static_cast<char*>(c),
+                                           sizeof(c))
                               << std::endl;
                     std::cout << "\tPort: " << ntohs(join.address.ipv4.sin_port) << std::endl;
                     break;
 
                 case AF_INET6:
                     std::cout << "\tAddress: "
-                              << inet_ntop(join.address.sock.sa_family, &join.address.ipv6.sin6_addr, c, sizeof(c))
+                              << inet_ntop(join.address.sock.sa_family,
+                                           &join.address.ipv6.sin6_addr,
+                                           static_cast<char*>(c),
+                                           sizeof(c))
                               << std::endl;
                     std::cout << "\tPort: " << ntohs(join.address.ipv6.sin6_port) << std::endl;
                     break;
@@ -80,21 +85,26 @@ public:
             std::cout << "Disconnected from" << std::endl;
             std::cout << "\tName: " << leave.name << std::endl;
 
-            char c[255];
-            std::memset(c, 0, sizeof(c));
+            char c[255] = {};
 
             switch (leave.address.sock.sa_family) {
                 case AF_INET:
 
                     std::cout << "\tAddress: "
-                              << inet_ntop(leave.address.sock.sa_family, &leave.address.ipv4.sin_addr, c, sizeof(c))
+                              << inet_ntop(leave.address.sock.sa_family,
+                                           &leave.address.ipv4.sin_addr,
+                                           static_cast<char*>(c),
+                                           sizeof(c))
                               << std::endl;
                     std::cout << "\tPort: " << ntohs(leave.address.ipv4.sin_port) << std::endl;
                     break;
 
                 case AF_INET6:
                     std::cout << "\tAddress: "
-                              << inet_ntop(leave.address.sock.sa_family, &leave.address.ipv6.sin6_addr, c, sizeof(c))
+                              << inet_ntop(leave.address.sock.sa_family,
+                                           &leave.address.ipv6.sin6_addr,
+                                           static_cast<char*>(c),
+                                           sizeof(c))
                               << std::endl;
                     std::cout << "\tPort: " << ntohs(leave.address.ipv6.sin6_port) << std::endl;
                     break;
@@ -119,11 +129,13 @@ public:
 
             auto net_config = std::make_unique<NUClear::message::NetworkConfiguration>();
 
-            net_config->name            = args.size() > 1 ? args[1] : "";
-            net_config->multicast_group = "ff02::98a2%en0";
-            //            net_config->multicast_group = "239.226.152.162";
-            //            net_config->multicast_group = "::1";
-            net_config->multicast_port = 7447;
+            net_config->name = args.size() > 1 ? args[1] : "";
+
+            // net_config->announce_address = "192.168.101.255";  // Broadcast
+            // net_config->announce_address = "ff02::98a2%en0";   // IPv6 multicast
+            net_config->announce_address = "239.226.152.162";  // IPv4 multicast
+            // net_config->announce_address = "::1";              // Unicast
+            net_config->announce_port = 7447;
 
             std::cout << "Testing network with node " << net_config->name << std::endl;
 
@@ -152,7 +164,7 @@ public:
         });
     }
 };
-}
+}  // namespace
 
 
 int main(int argc, const char* argv[]) {

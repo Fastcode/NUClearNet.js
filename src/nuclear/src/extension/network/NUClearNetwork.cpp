@@ -18,13 +18,13 @@
 
 #include "nuclear_bits/extension/network/NUClearNetwork.hpp"
 
-#include "nuclear_bits/util/network/get_interfaces.hpp"
-#include "nuclear_bits/util/platform.hpp"
-
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <set>
+#include <utility>
+#include "nuclear_bits/util/network/get_interfaces.hpp"
+#include "nuclear_bits/util/platform.hpp"
 
 namespace NUClear {
 namespace extension {
@@ -39,30 +39,18 @@ namespace extension {
         }
 
         NUClearNetwork::PacketQueue::PacketTarget::PacketTarget(std::weak_ptr<NetworkTarget> target,
-                                                                const std::vector<uint8_t>& acked)
-            : target(target), acked(acked), last_send(std::chrono::steady_clock::now()) {}
+                                                                std::vector<uint8_t> acked)
+            : target(std::move(target)), acked(std::move(acked)), last_send(std::chrono::steady_clock::now()) {}
 
-        NUClearNetwork::PacketQueue::PacketQueue() : targets(), header(), payload() {}
+        NUClearNetwork::PacketQueue::PacketQueue() = default;
 
         NUClearNetwork::NUClearNetwork()
-            : multicast_target()
-            , unicast_fd(-1)
-            , multicast_fd(-1)
+            : data_fd(-1)
+            , announce_fd(-1)
             , packet_data_mtu(1000)
-            , announce_packet()
             , packet_id_source(0)
-            , packet_callback()
-            , join_callback()
-            , leave_callback()
-            , next_event_callback()
             , last_announce(std::chrono::seconds(0))
-            , next_event(std::chrono::seconds(0))
-            , target_mutex()
-            , send_queue_mutex()
-            , send_queue()
-            , targets()
-            , name_target()
-            , udp_target() {}
+            , next_event(std::chrono::seconds(0)) {}
 
 
         NUClearNetwork::~NUClearNetwork() {
@@ -71,27 +59,27 @@ namespace extension {
 
         void NUClearNetwork::set_packet_callback(
             std::function<void(const NetworkTarget&, const uint64_t&, const bool&, std::vector<char>&&)> f) {
-            packet_callback = f;
+            packet_callback = std::move(f);
         }
 
 
         void NUClearNetwork::set_join_callback(std::function<void(const NetworkTarget&)> f) {
-            join_callback = f;
+            join_callback = std::move(f);
         }
 
 
         void NUClearNetwork::set_leave_callback(std::function<void(const NetworkTarget&)> f) {
-            leave_callback = f;
+            leave_callback = std::move(f);
         }
 
         void NUClearNetwork::set_next_event_callback(std::function<void(std::chrono::steady_clock::time_point)> f) {
-            next_event_callback = f;
+            next_event_callback = std::move(f);
         }
 
         std::array<uint16_t, 9> NUClearNetwork::udp_key(const sock_t& address) {
 
             // Get our keys for our maps, it will be the ip and then port
-            std::array<uint16_t, 9> key;
+            std::array<uint16_t, 9> key{};
             key.fill(0);
 
             switch (address.sock.sa_family) {
@@ -137,10 +125,10 @@ namespace extension {
         }
 
 
-        void NUClearNetwork::open_unicast() {
+        void NUClearNetwork::open_data(const sock_t& announce_target) {
 
             // Create the "join any" address for this address family
-            sock_t address = multicast_target;
+            sock_t address = announce_target;
 
             // IPv4
             if (address.sock.sa_family == AF_INET) {
@@ -153,119 +141,137 @@ namespace extension {
                 address.ipv6.sin6_port = 0;
             }
 
-            // Open a socket with the same family as our multicast target
-            unicast_fd = ::socket(address.sock.sa_family, SOCK_DGRAM, IPPROTO_UDP);
-            if (unicast_fd < 0) {
+            // Open a socket with the same family as our announce target
+            data_fd = ::socket(address.sock.sa_family, SOCK_DGRAM, IPPROTO_UDP);
+            if (data_fd < 0) {
                 throw std::system_error(network_errno, std::system_category(), "Unable to open the UDP socket");
             }
 
+            // If we are a broadcast address we need to state we are explicitly before binding
+            int yes = 1;
+            if (::setsockopt(data_fd, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
+                throw std::system_error(network_errno, std::system_category(), "Unable to set broadcast on the socket");
+            }
+
             // Bind to the address, and if we fail throw an error
-            if (::bind(unicast_fd, &address.sock, socket_size(address))) {
+            if (::bind(data_fd, &address.sock, socket_size(address)) != 0) {
                 throw std::system_error(
                     network_errno, std::system_category(), "Unable to bind the UDP socket to the port");
             }
         }
 
 
-        void NUClearNetwork::open_multicast() {
+        void NUClearNetwork::open_announce(const sock_t& announce_target) {
 
-            // Rather than listen on the multicast address directly, we join everything so
-            // our traffic isn't filtered allowing us to get multicast traffic from multiple devices
-            sock_t address = multicast_target;
+            // Work out what type of announce target we are using
+            sock_t address = announce_target;
 
-            // IPv4
+            // Work out what type of announce we are doing as it will influence how we make the socket
+            bool multicast =
+                (address.sock.sa_family == AF_INET && (ntohl(address.ipv4.sin_addr.s_addr) & 0xFF000000) == 0xEF000000)
+                || (address.sock.sa_family == AF_INET6 && address.ipv6.sin6_addr.s6_addr[0] == 0xFF);
+
+            // Swap our address so the rest of the information is anys
             if (address.sock.sa_family == AF_INET) {
                 address.ipv4.sin_addr.s_addr = htonl(INADDR_ANY);
             }
-            // IPv6
             else if (address.sock.sa_family == AF_INET6) {
                 address.ipv6.sin6_addr = IN6ADDR_ANY_INIT;
             }
 
             // Make our socket
-            multicast_fd = ::socket(address.sock.sa_family, SOCK_DGRAM, IPPROTO_UDP);
-            if (multicast_fd < 0) {
+            announce_fd = ::socket(address.sock.sa_family, SOCK_DGRAM, IPPROTO_UDP);
+            if (announce_fd < 0) {
                 throw std::system_error(network_errno, std::system_category(), "Unable to open the UDP socket");
             }
 
-            // Set that we reuse the address so more than one application can bind
-            int yes = true;
-            if (::setsockopt(multicast_fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
+            // Set that we reuse the address so more than one application can bind (this applies for unicast as well)
+            int yes = 1;
+            if (::setsockopt(announce_fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
                 throw std::system_error(network_errno, std::system_category(), "Unable to reuse address on the socket");
             }
 
 // If SO_REUSEPORT is available set it too
 #ifdef SO_REUSEPORT
-            if (::setsockopt(multicast_fd, SOL_SOCKET, SO_REUSEPORT, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
+            if (::setsockopt(announce_fd, SOL_SOCKET, SO_REUSEPORT, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
                 throw std::system_error(network_errno, std::system_category(), "Unable to reuse port on the socket");
             }
 #endif
 
+            // We enable SO_BROADCAST since sometimes we need to send broadcast packets
+            if (::setsockopt(announce_fd, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
+                throw std::system_error(network_errno, std::system_category(), "Unable to set broadcast on the socket");
+            }
+
             // Bind to the address
-            if (::bind(multicast_fd, &address.sock, socket_size(address))) {
+            if (::bind(announce_fd, &address.sock, socket_size(address)) != 0) {
                 throw std::system_error(network_errno, std::system_category(), "Unable to bind the UDP socket");
             }
 
-            // Our multicast join request will depend on protocol version
-            if (multicast_target.sock.sa_family == AF_INET) {
+            // If we have a multicast address, then we need to join the multicast groups
+            if (multicast) {
+                // Our multicast join request will depend on protocol version
+                if (announce_target.sock.sa_family == AF_INET) {
 
-                // Set the multicast address we are listening on
-                ip_mreq mreq;
-                mreq.imr_multiaddr = multicast_target.ipv4.sin_addr;
+                    // Set the multicast address we are listening on
+                    ip_mreq mreq{};
+                    mreq.imr_multiaddr = announce_target.ipv4.sin_addr;
 
-                // Join the multicast group on all the interfaces that support it
-                for (auto& iface : util::network::get_interfaces()) {
+                    // Join the multicast group on all the interfaces that support it
+                    for (auto& iface : util::network::get_interfaces()) {
 
-                    if (iface.ip.sock.sa_family == AF_INET && iface.flags.multicast) {
+                        if (iface.ip.sock.sa_family == AF_INET && iface.flags.multicast) {
 
-                        // Set our interface address
-                        mreq.imr_interface = iface.ip.ipv4.sin_addr;
-
-                        // Join our multicast group
-                        if (::setsockopt(multicast_fd,
-                                         IPPROTO_IP,
-                                         IP_ADD_MEMBERSHIP,
-                                         reinterpret_cast<char*>(&mreq),
-                                         sizeof(ip_mreq))
-                            < 0) {
-                            throw std::system_error(network_errno,
-                                                    std::system_category(),
-                                                    "There was an error while attempting to join the multicast group");
-                        }
-                    }
-                }
-            }
-            else if (multicast_target.sock.sa_family == AF_INET6) {
-
-                // Set the multicast address we are listening on
-                ipv6_mreq mreq;
-                mreq.ipv6mr_multiaddr = multicast_target.ipv6.sin6_addr;
-
-                std::set<unsigned int> added_interfaces;
-
-                // Join the multicast group on all the interfaces that support it
-                for (auto& iface : util::network::get_interfaces()) {
-
-                    if (iface.ip.sock.sa_family == AF_INET6 && iface.flags.multicast) {
-
-                        // Get the interface for this
-                        mreq.ipv6mr_interface = if_nametoindex(iface.name.c_str());
-
-                        // Only add each interface index once
-                        if (added_interfaces.count(mreq.ipv6mr_interface) == 0) {
-                            added_interfaces.insert(mreq.ipv6mr_interface);
+                            // Set our interface address
+                            mreq.imr_interface = iface.ip.ipv4.sin_addr;
 
                             // Join our multicast group
-                            if (::setsockopt(multicast_fd,
-                                             IPPROTO_IPV6,
-                                             IPV6_JOIN_GROUP,
+                            if (::setsockopt(announce_fd,
+                                             IPPROTO_IP,
+                                             IP_ADD_MEMBERSHIP,
                                              reinterpret_cast<char*>(&mreq),
-                                             sizeof(ipv6_mreq))
+                                             sizeof(ip_mreq))
                                 < 0) {
                                 throw std::system_error(
                                     network_errno,
                                     std::system_category(),
                                     "There was an error while attempting to join the multicast group");
+                            }
+                        }
+                    }
+                }
+                else if (announce_target.sock.sa_family == AF_INET6) {
+
+                    // Set the multicast address we are listening on
+                    ipv6_mreq mreq{};
+                    mreq.ipv6mr_multiaddr = announce_target.ipv6.sin6_addr;
+
+                    std::set<unsigned int> added_interfaces;
+
+                    // Join the multicast group on all the interfaces that support it
+                    for (auto& iface : util::network::get_interfaces()) {
+
+                        if (iface.ip.sock.sa_family == AF_INET6 && iface.flags.multicast) {
+
+                            // Get the interface for this
+                            mreq.ipv6mr_interface = if_nametoindex(iface.name.c_str());
+
+                            // Only add each interface index once
+                            if (added_interfaces.count(mreq.ipv6mr_interface) == 0) {
+                                added_interfaces.insert(mreq.ipv6mr_interface);
+
+                                // Join our multicast group
+                                if (::setsockopt(announce_fd,
+                                                 IPPROTO_IPV6,
+                                                 IPV6_JOIN_GROUP,
+                                                 reinterpret_cast<char*>(&mreq),
+                                                 sizeof(ipv6_mreq))
+                                    < 0) {
+                                    throw std::system_error(
+                                        network_errno,
+                                        std::system_category(),
+                                        "There was an error while attempting to join the multicast group");
+                                }
                             }
                         }
                     }
@@ -277,32 +283,39 @@ namespace extension {
         void NUClearNetwork::shutdown() {
 
             // If we have an fd, send a shutdown message
-            if (unicast_fd > 0) {
+            if (data_fd > 0) {
                 // Make a leave packet from our announce packet
                 LeavePacket packet;
 
-                // Send the packet
-                sendto(unicast_fd,
-                       reinterpret_cast<const char*>(&packet),
-                       sizeof(packet),
-                       0,
-                       &multicast_target.sock,
-                       socket_size(multicast_target));
+                auto announce_targets = name_target.equal_range("");
+                for (auto it = announce_targets.first; it != announce_targets.second; ++it) {
+
+                    // Send the packet
+                    sendto(data_fd,
+                           reinterpret_cast<const char*>(&packet),
+                           sizeof(packet),
+                           0,
+                           &it->second->target.sock,
+                           socket_size(it->second->target));
+                }
             }
 
             // Close our existing FDs if they exist
-            if (unicast_fd > 0) {
-                close(unicast_fd);
-                unicast_fd = -1;
+            if (data_fd > 0) {
+                close(data_fd);
+                data_fd = -1;
             }
-            if (multicast_fd > 0) {
-                close(multicast_fd);
-                multicast_fd = -1;
+            if (announce_fd > 0) {
+                close(announce_fd);
+                announce_fd = -1;
             }
         }
 
 
-        void NUClearNetwork::reset(std::string name, std::string group, in_port_t port, uint16_t network_mtu) {
+        void NUClearNetwork::reset(const std::string& name,
+                                   const std::string& address,
+                                   in_port_t port,
+                                   uint16_t network_mtu) {
 
             // Close our existing FDs if they exist
             shutdown();
@@ -318,22 +331,23 @@ namespace extension {
             udp_target.clear();
 
             // Setup some hints for what our address is
-            addrinfo hints;
+            addrinfo hints{};
             memset(&hints, 0, sizeof hints);  // make sure the struct is empty
             hints.ai_family   = AF_UNSPEC;    // don't care about IPv4 or IPv6
             hints.ai_socktype = SOCK_DGRAM;   // using udp datagrams
 
             // Get our info on this address
             addrinfo* servinfo = nullptr;
-            ::getaddrinfo(group.c_str(), std::to_string(port).c_str(), &hints, &servinfo);
+            ::getaddrinfo(address.c_str(), std::to_string(port).c_str(), &hints, &servinfo);
 
             // Check if we have any addresses to work with
             if (servinfo == nullptr) {
-                throw std::runtime_error(std::string("The multicast address provided (") + group + ") was invalid");
+                throw std::runtime_error(std::string("The multicast address provided (") + address + ") was invalid");
             }
 
             // Clear our struct
-            std::memset(&multicast_target, 0, sizeof(multicast_target));
+            sock_t announce_target{};
+            std::memset(&announce_target, 0, sizeof(announce_target));
 
             // The list is actually a linked list of valid addresses
             // The address we choose is in the following priority, IPv4, IPv6, Other
@@ -341,31 +355,20 @@ namespace extension {
 
                 // If we find an IPv4 address, prefer that
                 if (servinfo->ai_family == AF_INET) {
-                    auto& addr = *reinterpret_cast<const sockaddr_in*>(servinfo->ai_addr);
 
-                    // Check this address is multicast in the Administratively-scoped group
-                    // (starts with 1110 1111)
-                    if ((ntohl(addr.sin_addr.s_addr) & 0xEF000000) == 0xEF000000) {
+                    // Clear and set our struct
+                    std::memset(&announce_target, 0, sizeof(announce_target));
+                    std::memcpy(&announce_target, servinfo->ai_addr, servinfo->ai_addrlen);
 
-                        // Clear and set our struct
-                        std::memset(&multicast_target, 0, sizeof(multicast_target));
-                        std::memcpy(&multicast_target, servinfo->ai_addr, servinfo->ai_addrlen);
-
-                        // We prefer IPv4 so use it and stop looking
-                        break;
-                    }
+                    // We prefer IPv4 so use it and stop looking
+                    break;
                 }
-                // If we find an IPv6 address now we just use that
+                // If we find an IPv6 address we set that for now
                 else if (servinfo->ai_family == AF_INET6) {
-                    auto& addr = *reinterpret_cast<const sockaddr_in6*>(servinfo->ai_addr);
 
-                    // Check the address is multicast (starts with 0xFF)
-                    if (addr.sin6_addr.s6_addr[0] == 0xFF) {
-
-                        // Clear and set our struct
-                        std::memset(&multicast_target, 0, sizeof(multicast_target));
-                        std::memcpy(&multicast_target, servinfo->ai_addr, servinfo->ai_addrlen);
-                    }
+                    // Clear and set our struct
+                    std::memset(&announce_target, 0, sizeof(announce_target));
+                    std::memcpy(&announce_target, servinfo->ai_addr, servinfo->ai_addrlen);
                 }
             }
 
@@ -373,22 +376,22 @@ namespace extension {
             ::freeaddrinfo(servinfo);
 
             // If we couldn't find a useable address die
-            if (multicast_target.sock.sa_family != AF_INET && multicast_target.sock.sa_family != AF_INET6) {
-                throw std::runtime_error(std::string("The network address provided (") + group
+            if (announce_target.sock.sa_family != AF_INET && announce_target.sock.sa_family != AF_INET6) {
+                throw std::runtime_error(std::string("The network address provided (") + address
                                          + ") was not a valid multicast address");
             }
 
             // Add the target for our multicast packets
-            auto all_target = std::make_shared<NetworkTarget>("", multicast_target);
+            auto all_target = std::make_shared<NetworkTarget>("", announce_target);
             targets.push_front(all_target);
             name_target.insert(std::make_pair("", all_target));
-            udp_target.insert(std::make_pair(udp_key(multicast_target), all_target));
+            udp_target.insert(std::make_pair(udp_key(announce_target), all_target));
 
             // Work out our MTU for udp packets
             packet_data_mtu = network_mtu;              // Start with the total mtu
             packet_data_mtu -= sizeof(DataPacket) - 1;  // Now remove data packet header size
-            // IPv6 headers are always 40 bytes, and IPv4 can be 20-60 but if we assume 40 for all cases it should be
-            // safe enough
+            // IPv6 headers are always 40 bytes, and IPv4 can be 20-60 but if we assume 40 for all cases it should
+            // be safe enough
             packet_data_mtu -= 40;  // Remove size of an IPv4 header or IPv6 header
             packet_data_mtu -= 8;   // Size of a UDP packet header
 
@@ -398,9 +401,10 @@ namespace extension {
             pkt                 = AnnouncePacket();
             std::memcpy(&pkt.name, name.c_str(), name.size());
 
-            // Open our unicast socket and then our multicast one
-            open_unicast();
-            open_multicast();
+            // Open our data socket and then our multicast one
+
+            open_data(announce_target);
+            open_announce(announce_target);
         }
 
 
@@ -408,16 +412,16 @@ namespace extension {
 
             // Allocate a vector that can hold a datagram
             std::vector<char> payload(1500);
-            iovec iov;
+            iovec iov{};
             iov.iov_base = payload.data();
             iov.iov_len  = payload.size();
 
             // Who we are receiving from
-            sock_t from;
+            sock_t from{};
             std::memset(&from, 0, sizeof(from));
 
             // Setup our message header to receive
-            msghdr mh;
+            msghdr mh{};
             memset(&mh, 0, sizeof(msghdr));
             mh.msg_name    = &from.sock;
             mh.msg_namelen = sizeof(from);
@@ -488,19 +492,19 @@ namespace extension {
             unsigned long count = 0;
 
             // Read packets from the multicast socket while there is data available
-            ioctl(multicast_fd, FIONREAD, &(count = 0));
+            ioctl(announce_fd, FIONREAD, &(count = 0));
             while (count > 0) {
-                auto packet = read_socket(multicast_fd);
-                process_packet(std::move(packet.first), std::move(packet.second));
-                ioctl(multicast_fd, FIONREAD, &(count = 0));
+                auto packet = read_socket(announce_fd);
+                process_packet(packet.first, std::move(packet.second));
+                ioctl(announce_fd, FIONREAD, &(count = 0));
             }
 
-            // Check if we have a packet available on the unicast socket
-            ioctl(unicast_fd, FIONREAD, &(count = 0));
+            // Check if we have a packet available on the data socket
+            ioctl(data_fd, FIONREAD, &(count = 0));
             while (count > 0) {
-                auto packet = read_socket(unicast_fd);
-                process_packet(std::move(packet.first), std::move(packet.second));
-                ioctl(unicast_fd, FIONREAD, &(count = 0));
+                auto packet = read_socket(data_fd);
+                process_packet(packet.first, std::move(packet.second));
+                ioctl(data_fd, FIONREAD, &(count = 0));
             }
         }
 
@@ -563,21 +567,26 @@ namespace extension {
 
         void NUClearNetwork::announce() {
 
-            // Send the packet
-            if (::sendto(unicast_fd,
-                         announce_packet.data(),
-                         announce_packet.size(),
-                         0,
-                         &multicast_target.sock,
-                         socket_size(multicast_target))
-                < 0) {
-                throw std::system_error(
-                    network_errno, std::system_category(), "Network error when sending the announce packet");
+            // Get all our targets that are global targets
+            auto announce_targets = name_target.equal_range("");
+            for (auto it = announce_targets.first; it != announce_targets.second; ++it) {
+
+                // Send the packet
+                if (::sendto(data_fd,
+                             announce_packet.data(),
+                             announce_packet.size(),
+                             0,
+                             &it->second->target.sock,
+                             socket_size(it->second->target))
+                    < 0) {
+                    throw std::system_error(
+                        network_errno, std::system_category(), "Network error when sending the announce packet");
+                }
             }
         }
 
 
-        void NUClearNetwork::process_packet(sock_t&& address, std::vector<char>&& payload) {
+        void NUClearNetwork::process_packet(const sock_t& address, std::vector<char>&& payload) {
 
             // First validate this is a NUClear network packet we can read (a version 2 NUClear packet)
             if (payload.size() >= sizeof(PacketHeader) && payload[0] == '\xE2' && payload[1] == '\x98'
@@ -611,7 +620,7 @@ namespace extension {
                             // If they sent us an empty name ignore that's reserved for multicast transmissions
                             if (!name.empty()) {
                                 // Add them into our list
-                                auto ptr            = std::make_shared<NetworkTarget>(name, std::move(address));
+                                auto ptr            = std::make_shared<NetworkTarget>(name, address);
                                 bool new_connection = false;
                                 /* Mutex scope */ {
                                     std::lock_guard<std::mutex> lock(target_mutex);
@@ -624,7 +633,7 @@ namespace extension {
                                         name_target.insert(std::make_pair(name, ptr));
 
                                         // Say hi back!
-                                        ::sendto(unicast_fd,
+                                        ::sendto(data_fd,
                                                  announce_packet.data(),
                                                  announce_packet.size(),
                                                  0,
@@ -715,7 +724,7 @@ namespace extension {
                                     sock_t& to = remote->target;
 
                                     // Send the packet
-                                    ::sendto(unicast_fd, r.data(), r.size(), 0, &to.sock, socket_size(to));
+                                    ::sendto(data_fd, r.data(), r.size(), 0, &to.sock, socket_size(to));
 
                                     // We don't need to process this packet we already did
                                     return;
@@ -741,7 +750,7 @@ namespace extension {
                                     // Make who we are sending it to into a useable address
                                     sock_t& to = remote->target;
 
-                                    sendto(unicast_fd,
+                                    sendto(data_fd,
                                            reinterpret_cast<const char*>(&response),
                                            sizeof(response),
                                            0,
@@ -793,7 +802,7 @@ namespace extension {
                                         sock_t& to = remote->target;
 
                                         // Send the packet
-                                        ::sendto(unicast_fd, r.data(), r.size(), 0, &to.sock, socket_size(to));
+                                        ::sendto(data_fd, r.data(), r.size(), 0, &to.sock, socket_size(to));
                                     }
 
                                     // Clear our packets here (the one we just got will be added right after this)
@@ -824,7 +833,7 @@ namespace extension {
                                     sock_t& to = remote->target;
 
                                     // Send the packet
-                                    ::sendto(unicast_fd, r.data(), r.size(), 0, &to.sock, socket_size(to));
+                                    ::sendto(data_fd, r.data(), r.size(), 0, &to.sock, socket_size(to));
                                 }
 
                                 // Check to see if we have enough to assemble the whole thing
@@ -919,7 +928,7 @@ namespace extension {
                                                                ? 0xFF
                                                                : 0xFF >> (8 - (packet.packet_count % 8));
 
-                                        all_acked &= (s->acked[i] & expected) == expected;
+                                        all_acked &= static_cast<int>((s->acked[i] & expected) == expected);
                                     }
 
                                     // The remote has received this entire packet we can erase our sender
@@ -1004,21 +1013,21 @@ namespace extension {
 
 
         std::vector<fd_t> NUClearNetwork::listen_fds() {
-            return std::vector<fd_t>({unicast_fd, multicast_fd});
+            return std::vector<fd_t>({data_fd, announce_fd});
         }
 
         void NUClearNetwork::send_packet(const sock_t& target,
                                          NUClear::extension::network::DataPacket header,
                                          uint16_t packet_no,
                                          const std::vector<char>& payload,
-                                         const bool& reliable) {
+                                         const bool& /*reliable*/) {
 
             // Our packet we are sending
-            msghdr message;
+            msghdr message{};
             std::memset(&message, 0, sizeof(msghdr));
 
             iovec data[2];
-            message.msg_iov    = data;
+            message.msg_iov    = static_cast<iovec*>(data);
             message.msg_iovlen = 2;
 
             // Update our headers packet number and set it in the message
@@ -1026,17 +1035,18 @@ namespace extension {
             data[0].iov_base = reinterpret_cast<char*>(&header);
             data[0].iov_len  = sizeof(DataPacket) - 1;
 
-            // Work out what chunk of data we are sending const cast is fine as posix guarantees it won't be modified
-            data[1].iov_base = const_cast<char*>(payload.data() + (packet_data_mtu * packet_no));
+            // Work out what chunk of data we are sending const cast is fine as posix guarantees it won't be
+            // modified
+            data[1].iov_base = const_cast<char*>(payload.data() + (packet_data_mtu * packet_no));  // NOLINT
             data[1].iov_len  = packet_no + 1 < header.packet_count ? packet_data_mtu : payload.size() % packet_data_mtu;
 
             // Set our target and send (once again const cast is fine)
-            message.msg_name    = const_cast<sockaddr*>(&target.sock);
+            message.msg_name    = const_cast<sockaddr*>(&target.sock);  // NOLINT
             message.msg_namelen = socket_size(target);
 
-            // TODO if reliable, run select first to see if this socket is writeable
+            // TODO(trent): if reliable, run select first to see if this socket is writeable
             // If it is not reliable just don't send the message instead of blocking
-            sendmsg(unicast_fd, &message, 0);
+            sendmsg(data_fd, &message, 0);
         }
 
 
@@ -1045,6 +1055,11 @@ namespace extension {
                                   const std::string& target,
                                   bool reliable) {
 
+            // If we are not connected throw an error
+            if (targets.empty()) {
+                throw std::runtime_error("Cannot send messages as the network is not connected");
+            }
+
 
             // The header for our packet
             DataPacket header;
@@ -1052,8 +1067,8 @@ namespace extension {
             /* Mutex Scope */ {
                 std::lock_guard<std::mutex> lock(send_queue_mutex);
                 // For the packet id we ensure that it's not currently used for retransmission
-                while (send_queue.count(header.packet_id = ++packet_id_source) > 0)
-                    ;
+                while (send_queue.count(header.packet_id = ++packet_id_source) > 0) {
+                }
             }
 
             header.packet_no    = 0;
@@ -1069,26 +1084,29 @@ namespace extension {
 
                 auto& queue = send_queue[header.packet_id];
 
-                // Store the header, but update it's type to be a retransmission so it can be ignored if overtransmitted
+                // Store the header, but update it's type to be a retransmission so it can be ignored if
+                // overtransmitted
                 queue.header      = header;
                 queue.header.type = DATA_RETRANSMISSION;
-                queue.payload     = payload;  // TODO there might be some better memory management that can happen here
+                // TODO(trent): there might be some better memory management that can happen here
+                queue.payload = payload;
                 std::vector<uint8_t> acks((header.packet_count / 8) + 1, 0);
 
                 // Find interested parties or if multicast it's everyone we are connected to
-                // The first element in name_target will always be the multicast target which must be ignored
-                auto range = target.empty() ? std::make_pair(std::next(name_target.begin(), 1), name_target.end())
+                auto range = target.empty() ? std::make_pair(name_target.begin(), name_target.end())
                                             : name_target.equal_range(target);
                 for (auto it = range.first; it != range.second; ++it) {
+                    // If this target is an announce target ignore it
+                    if (it->first != "") {
+                        // Add this guy to the queue
+                        queue.targets.emplace_back(it->second, acks);
 
-                    // Add this guy to the queue
-                    queue.targets.emplace_back(it->second, acks);
-
-                    // The next time we should check for a timeout
-                    auto next_timeout = std::chrono::steady_clock::now() + it->second->round_trip_time;
-                    if (next_timeout < next_event) {
-                        next_event = next_timeout;
-                        next_event_callback(next_event);
+                        // The next time we should check for a timeout
+                        auto next_timeout = std::chrono::steady_clock::now() + it->second->round_trip_time;
+                        if (next_timeout < next_event) {
+                            next_event = next_timeout;
+                            next_event_callback(next_event);
+                        }
                     }
                 }
             }

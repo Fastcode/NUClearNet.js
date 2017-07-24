@@ -29,12 +29,11 @@ namespace {
 
 class TestReactor : public NUClear::Reactor {
 public:
-    TestReactor(std::unique_ptr<NUClear::Environment> environment)
-        : Reactor(std::move(environment)), in(0), out(0), writer() {
+    TestReactor(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)), in(0), out(0) {
 
         int fds[2];
 
-        if (pipe(fds) < 0) {
+        if (pipe(static_cast<int*>(fds)) < 0) {
             FAIL("We couldn't make the pipe for the test");
         }
 
@@ -75,7 +74,7 @@ public:
     int out;
     ReactionHandle writer;
 };
-}
+}  // namespace
 
 TEST_CASE("Testing the IO extension", "[api][io]") {
 

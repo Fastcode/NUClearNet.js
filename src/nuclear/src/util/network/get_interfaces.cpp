@@ -43,13 +43,12 @@ namespace util {
             else {
                 // Allocate some memory now and call again
                 PIP_ADAPTER_ADDRESSES addrs = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(std::malloc(size));
-                auto rv =
-                    GetAdaptersAddresses(AF_UNSPEC,
-                                         GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER
-                                             | GAA_FLAG_SKIP_FRIENDLY_NAME,
-                                         nullptr,
-                                         addrs,
-                                         &size);
+                auto rv                     = GetAdaptersAddresses(AF_UNSPEC,
+                                               GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST
+                                                   | GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_SKIP_FRIENDLY_NAME,
+                                               nullptr,
+                                               addrs,
+                                               &size);
                 if (rv != ERROR_SUCCESS) {
                     free(addrs);
                     throw std::runtime_error("Unable to query the list of network interfaces");
@@ -145,7 +144,7 @@ namespace util {
 
             std::vector<Interface> ifaces;
 
-            addrinfo hints;
+            addrinfo hints{};
             std::memset(&hints, 0, sizeof(hints));
             hints.ai_family = AF_INET;
 
@@ -174,7 +173,7 @@ namespace util {
                     case AF_INET6: std::memcpy(&iface.ip, cursor->ifa_addr, sizeof(sockaddr_in6)); break;
                 }
 
-                if (cursor->ifa_netmask) {
+                if (cursor->ifa_netmask != nullptr) {
                     switch (cursor->ifa_addr->sa_family) {
                         case AF_INET: std::memcpy(&iface.netmask, cursor->ifa_netmask, sizeof(sockaddr_in)); break;
 
@@ -182,7 +181,7 @@ namespace util {
                     }
                 }
 
-                if (cursor->ifa_dstaddr) {
+                if (cursor->ifa_dstaddr != nullptr) {
                     switch (cursor->ifa_addr->sa_family) {
                         case AF_INET: std::memcpy(&iface.broadcast, cursor->ifa_dstaddr, sizeof(sockaddr_in)); break;
 
@@ -204,6 +203,6 @@ namespace util {
             return ifaces;
         }
 #endif
-    }
-}
-}
+    }  // namespace network
+}  // namespace util
+}  // namespace NUClear

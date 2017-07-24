@@ -18,13 +18,12 @@
 
 #include "nuclear_bits/util/demangle.hpp"
 
-
 // Windows symbol demangler
 #ifdef _WIN32
 
 #include <Dbghelp.h>
 #include <mutex>
-#include "nuclear_bits/util/windows_includes.hpp"
+#include "nuclear_bits/util/platform.hpp"
 
 #pragma comment(lib, "Dbghelp.lib")
 
@@ -67,15 +66,16 @@ namespace util {
             return symbol;
         }
     }
-}
-}
+}  // namespace util
+}  // namespace NUClear
 
 // GNU/Clang symbol demangler
 #else
 
-#include <cxxabi.h>
-#include <cstdlib>
-#include <memory>
+#include <cxxabi.h>  // for __cxa_demangle
+#include <cstdlib>   // for free
+#include <memory>    // for unique_ptr
+#include <string>    // for string
 
 namespace NUClear {
 namespace util {
@@ -94,6 +94,8 @@ namespace util {
 
         return std::string(status == 0 ? res.get() : symbol);
     }
-}
-}
+
+}  // namespace util
+}  // namespace NUClear
+
 #endif  // _MSC_VER

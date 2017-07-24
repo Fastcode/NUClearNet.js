@@ -23,14 +23,12 @@
 namespace {
 
 struct TypeA {
-    TypeA() : x(0) {}
     TypeA(int x) : x(x) {}
 
     int x;
 };
 
 struct TypeB {
-    TypeB() : x(0) {}
     TypeB(int x) : x(x) {}
 
     int x;
@@ -41,7 +39,7 @@ private:
     std::vector<std::shared_ptr<const TypeA>> stored;
 
 public:
-    TestReactor(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)), stored() {
+    TestReactor(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)) {
 
         // Trigger on TypeA and store the result
         on<Trigger<TypeA>>().then([this](const std::shared_ptr<const TypeA>& a) {
@@ -49,10 +47,10 @@ public:
 
             // Wait until we have 10 elements
             if (stored.size() == 10) {
-                emit(std::make_unique<TypeB>(TypeB{0}));
+                emit(std::make_unique<TypeB>(0));
             }
             else {
-                emit(std::make_unique<TypeA>(TypeA{a->x + 1}));
+                emit(std::make_unique<TypeA>(a->x + 1));
             }
         });
 
@@ -69,10 +67,10 @@ public:
             powerplant.shutdown();
         });
 
-        on<Startup>().then([this] { emit(std::make_unique<TypeA>(TypeA{0})); });
+        on<Startup>().then([this] { emit(std::make_unique<TypeA>(0)); });
     }
 };
-}
+}  // namespace
 
 TEST_CASE("Testing the raw type conversions work properly", "[api][raw]") {
 
