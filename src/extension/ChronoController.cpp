@@ -28,7 +28,7 @@ namespace extension {
     using NUClear::dsl::operation::ChronoTask;
 
     ChronoController::ChronoController(std::unique_ptr<NUClear::Environment> environment)
-        : Reactor(std::move(environment)), tasks(), mutex(), wait(), wait_offset(std::chrono::milliseconds(0)) {
+        : Reactor(std::move(environment)), wait_offset(std::chrono::milliseconds(0)) {
 
         on<Trigger<ChronoTask>>().then("Add Chrono task", [this](std::shared_ptr<const ChronoTask> task) {
 
@@ -77,7 +77,7 @@ namespace extension {
             if (!tasks.empty()) {
 
                 // Make the list into a heap so we can remove the soonest ones
-                std::make_heap(tasks.begin(), tasks.end(), std::greater<ChronoTask>());
+                std::make_heap(tasks.begin(), tasks.end(), std::greater<>());
 
                 // If we are within the wait offset of the time, spinlock until we get there for greater accuracy
                 if (NUClear::clock::now() + wait_offset > tasks.front().time) {
@@ -114,5 +114,5 @@ namespace extension {
             }
         });
     }
-}
-}
+}  // namespace extension
+}  // namespace NUClear

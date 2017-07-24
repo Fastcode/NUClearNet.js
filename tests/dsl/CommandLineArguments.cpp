@@ -42,7 +42,7 @@ public:
         on<Trigger<ShutdownNowPlx>>().then([this] { powerplant.shutdown(); });
     }
 };
-}
+}  // namespace
 
 TEST_CASE("Testing the Command Line argument capturing", "[api][command_line_arguments]") {
     int argc           = 2;
@@ -50,7 +50,7 @@ TEST_CASE("Testing the Command Line argument capturing", "[api][command_line_arg
 
     NUClear::PowerPlant::Configuration config;
     config.thread_count = 1;
-    NUClear::PowerPlant plant(config, argc, argv);
+    NUClear::PowerPlant plant(config, argc, reinterpret_cast<const char**>(argv));
     plant.install<TestReactor>();
 
     plant.start();
