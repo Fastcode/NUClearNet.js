@@ -133,13 +133,13 @@ NUClearNet.prototype.hash = function(data) {
 NUClearNet.prototype.connect = function (options) {
     // Default some of the options
     var name = options.name;
-    var group = options.group === undefined ? '239.226.152.162' : options.group;
+    var address = options.address === undefined ? '239.226.152.162' : options.address;
     var port = options.port === undefined ? 7447 : options.port;
     var mtu = options.mtu === undefined ? 1500 : options.mtu;
 
     // Connect to the network
     this._active = true;
-    this._net.reset(name, group, port, mtu);
+    this._net.reset(name, address, port, mtu);
 
     // Run our first "process" to kick things off
     this._net.process();

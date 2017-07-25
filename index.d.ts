@@ -23,9 +23,9 @@
 export interface NUClearNetOptions {
     /// The name of this node on the NUClearNetwork
     name: string
-    /// The multicast group this network is on, supports ipv4 and ipv6
-    group?: string
-    /// The port the mulitcast group runs on
+    /// The announce address for this network defaults to 239.226.152.162
+    address?: string
+    /// The announce port for this network defaults to 7447
     port?: number
     /// The MTU of the network. Used for splitting packets optimally
     mtu?: number
