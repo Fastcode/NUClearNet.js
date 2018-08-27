@@ -227,13 +227,14 @@ namespace extension {
 
                             // Set our interface address
                             mreq.imr_interface = iface.ip.ipv4.sin_addr;
+
+                            // Join our multicast group
                             int status = ::setsockopt(announce_fd,
                                              IPPROTO_IP,
                                              IP_ADD_MEMBERSHIP,
                                              reinterpret_cast<char*>(&mreq),
                                              sizeof(ip_mreq));
 
-                            // Join our multicast group
                             if (status < 0) {
                                 last_network_errno = network_errno;
                             } else {
