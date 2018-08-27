@@ -1,5 +1,4 @@
-# Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
-#               2014-2017 Trent Houliston <trent@houliston.me>
+# Copyright (C) 2013-2016 Trent Houliston <trent@houliston.me>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 # documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -14,7 +13,9 @@
 # COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-INCLUDE(ToolchainLibraryFinder)
-ToolchainLibraryFinder(NAME CATCH
-                       HEADER catch.hpp
+INCLUDE(HeaderLibrary)
+
+HeaderLibrary(NAME CATCH
+              HEADER catch.hpp
+              URL "https://raw.githubusercontent.com/catchorg/Catch2/master/single_include/catch2/catch.hpp"
 )
