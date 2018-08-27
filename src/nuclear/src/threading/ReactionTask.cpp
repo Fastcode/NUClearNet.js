@@ -42,10 +42,8 @@ namespace threading {
                                                 clock::time_point(std::chrono::seconds(0)),
                                                 clock::time_point(std::chrono::seconds(0)),
                                                 nullptr})
+        , emit_stats(parent.emit_stats && (current_task != nullptr ? current_task->emit_stats : true))
         , callback(callback) {
-
-        // There is one new active task
-        ++parent.active_tasks;
     }
 
     const ReactionTask* ReactionTask::get_current_task() {
@@ -60,12 +58,6 @@ namespace threading {
 
         // Run our callback at catch the returned task (to see if it rescheduled itself)
         us = callback(std::move(us));
-
-        // If we were not rescheduled then finish off our stats
-        if (us) {
-            // There is one less task
-            --parent.active_tasks;
-        }
 
         // Reset our task back
         current_task = old_task;

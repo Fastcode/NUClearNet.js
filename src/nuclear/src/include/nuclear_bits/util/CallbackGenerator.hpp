@@ -59,8 +59,14 @@ namespace util {
 
         std::pair<int, threading::ReactionTask::TaskFunction> operator()(threading::Reaction& r) {
 
+            // Add one to our active tasks
+            ++r.active_tasks;
+
             // Check if we should even run
             if (!DSL::precondition(r)) {
+                // Take one from our active tasks
+                --r.active_tasks;
+
                 // We cancel our execution by returning an empty function
                 return std::make_pair(0, threading::ReactionTask::TaskFunction());
             }
@@ -76,6 +82,9 @@ namespace util {
 
                 // Check if our data is good (all the data exists) otherwise terminate the call
                 if (!check_data(data)) {
+                    // Take one from our active tasks
+                    --r.active_tasks;
+
                     // We cancel our execution by returning an empty function
                     return std::make_pair(0, threading::ReactionTask::TaskFunction());
                 }
@@ -113,8 +122,13 @@ namespace util {
                         // Run our postconditions
                         DSL::postcondition(*task);
 
-                        // Emit our reaction statistics
-                        PowerPlant::powerplant->emit<dsl::word::emit::Direct>(task->stats);
+                        // Take one from our active tasks
+                        --task->parent.active_tasks;
+
+                        // Emit our reaction statistics if it wouldn't cause a loop
+                        if (task->emit_stats) {
+                            PowerPlant::powerplant->emit<dsl::word::emit::Direct>(task->stats);
+                        }
                     }
 
                     // Return our task
