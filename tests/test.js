@@ -33,14 +33,14 @@ nu.on('nuclear_join', function (peer) {
     console.log('Send', peer.name, 'Unreliable');
     nu.send({
         type: stringName,
-        payload: new Buffer('Hello World from Javascript! (targeted UNRELIABLE)'),
+        payload: Buffer.from('Hello World from Javascript! (targeted UNRELIABLE)'),
         target: peer.name,
     });
 
     console.log('Send', peer.name, 'Reliable');
     nu.send({
         type: stringName,
-        payload: new Buffer('Hello World from Javascript! (targeted RELIABLE)'),
+        payload: Buffer.from('Hello World from Javascript! (targeted RELIABLE)'),
         target: peer.name,
         reliable: true,
     });
@@ -76,12 +76,12 @@ process.on('SIGINT', () => {
 console.log('Sending All Unreliable');
 nu.send({
     type: stringName,
-    payload: new Buffer('Hello World from Javascript! (ALL UNRELIABLE)'),
+    payload: Buffer.from('Hello World from Javascript! (ALL UNRELIABLE)'),
 });
 
 console.log('Sending All Reliable');
 nu.send({
     type: stringName,
-    payload: new Buffer('Hello World from Javascript! (ALL RELIABLE)'),
+    payload: Buffer.from('Hello World from Javascript! (ALL RELIABLE)'),
     reliable: true,
 });
