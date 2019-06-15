@@ -53,7 +53,7 @@ void NetworkBinding::Send(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     bool reliable      = false;
 
     // Read reliablity information
-    reliable = info[3]->BooleanValue();
+    reliable = Nan::To<bool>(info[3]).FromJust();
 
     // Read target information
     // If we have a string here use it
@@ -144,7 +144,7 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
                         .As<v8::Value>(),
                     Nan::CopyBuffer(payload.data(), payload.size()).ToLocalChecked().As<v8::Value>()};
 
-                cb->Call(6, argv);
+                Nan::Call(*cb, 6, argv);
             });
         }
         else if (event == "join" || event == "leave") {
@@ -178,7 +178,7 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
                                                 Nan::New<v8::String>(address).ToLocalChecked().As<v8::Value>(),
                                                 Nan::New<v8::Integer>(port).As<v8::Value>()};
 
-                cb->Call(3, argv);
+                Nan::Call(*cb, 3, argv);
             };
 
             if (event == "join") {
@@ -198,7 +198,7 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
 
                 v8::Local<v8::Integer> v  = Nan::New<v8::Integer>(ms);
                 v8::Local<v8::Value> argv = v.As<v8::Value>();
-                cb->Call(1, &argv);
+                Nan::Call(*cb, 1, &argv);
             });
         }
     }
@@ -216,24 +216,8 @@ void NetworkBinding::Reset(const Nan::FunctionCallbackInfo<v8::Value>& info) {
 
     std::string name     = "";
     std::string group    = "239.226.152.162";
-    uint16_t port        = 7447;
-    uint16_t network_mtu = 1500;
-
-    // MTU number
-    if (info[3]->IsNumber()) {
-        network_mtu = uint16_t(info[3]->IntegerValue());
-    }
-    else {
-        Nan::ThrowError("MTU must be a number");
-    }
-
-    // Port number
-    if (info[2]->IsNumber()) {
-        port = uint16_t(info[2]->IntegerValue());
-    }
-    else {
-        Nan::ThrowError("Port must be a number");
-    }
+    uint32_t port        = Nan::To<uint32_t>(info[2]).FromMaybe(7447);
+    uint32_t network_mtu = Nan::To<uint32_t>(info[3]).FromMaybe(1500);
 
     // Multicast Group
     if (info[1]->IsString()) {
@@ -301,8 +285,10 @@ void NetworkBinding::Init(v8::Local<v8::Object> exports, v8::Local<v8::Object> m
     Nan::SetPrototypeMethod(tpl, "shutdown", Shutdown);
     Nan::SetPrototypeMethod(tpl, "hash", Hash);
 
-    constructor.Reset(tpl->GetFunction());
-    module->Set(Nan::New("exports").ToLocalChecked(), tpl->GetFunction());
+    constructor.Reset();
+
+    auto ctx = Nan::GetCurrentContext();
+    module->Set(ctx, Nan::New("exports").ToLocalChecked(), tpl->GetFunction(ctx).ToLocalChecked()).ToChecked();
 }
 
 void NetworkBinding::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
