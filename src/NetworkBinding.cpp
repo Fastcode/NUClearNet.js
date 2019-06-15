@@ -53,7 +53,7 @@ void NetworkBinding::Send(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     bool reliable      = false;
 
     // Read reliablity information
-    reliable = Nan::To<bool>(info[3]).FromJust();
+    reliable = Nan::To<bool>(info[3]).ToChecked();
 
     // Read target information
     // If we have a string here use it
