@@ -17,7 +17,7 @@
 
 #include "NetworkBinding.hpp"
 #include "NetworkListener.hpp"
-#include "nuclear_bits/util/serialise/xxhash.h"
+#include "nuclear/src/util/serialise/xxhash.h"
 
 namespace NUClear {
 
