@@ -17,8 +17,6 @@
 
 'use strict';
 
-// @ts-check
-
 const NetworkBinding = require('bindings')('nuclearnet');
 const { EventEmitter } = require('events');
 
