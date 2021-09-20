@@ -18,7 +18,7 @@
 #ifndef NETWORKBINDING_H
 #define NETWORKBINDING_H
 
-#include "nuclear_bits/extension/network/NUClearNetwork.hpp"
+#include "nuclear/src/extension/network/NUClearNetwork.hpp"
 #include <nan.h>
 
 namespace NUClear {
