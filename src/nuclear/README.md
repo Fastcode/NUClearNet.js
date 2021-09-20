@@ -1,4 +1,4 @@
-NUClear [![Build Status](https://travis-ci.org/Fastcode/NUClear.svg?branch=master)](https://travis-ci.org/Fastcode/NUClear)
+NUClear [![CI](https://github.com/Fastcode/NUClear/actions/workflows/main.yaml/badge.svg)](https://github.com/Fastcode/NUClear/actions/workflows/main.yaml)
 =======
 
 NUClear is a C++ software framework designed to aid in the development of real time modular systems.
@@ -27,5 +27,5 @@ make install
 
 ### Dependencies
 * g++ 4.9, clang (with c++14 support) or Visual Studio 2015
-* cmake 2.8.10
+* cmake 3.1.0
 * [Catch Unit Testing Framework](https://github.com/philsquared/Catch) for building tests

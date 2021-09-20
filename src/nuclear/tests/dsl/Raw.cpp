@@ -17,8 +17,7 @@
  */
 
 #include <catch.hpp>
-
-#include "nuclear"
+#include <nuclear>
 
 namespace {
 
@@ -46,21 +45,18 @@ public:
             stored.push_back(a);
 
             // Wait until we have 10 elements
-            if (stored.size() == 10) {
-                emit(std::make_unique<TypeB>(0));
-            }
+            if (stored.size() == 10) { emit(std::make_unique<TypeB>(0)); }
             else {
                 emit(std::make_unique<TypeA>(a->x + 1));
             }
         });
 
         on<Trigger<TypeB>>().then([this](const TypeB&) {
-
             // Make sure that our type a list has numbers 0 to 9
 
             REQUIRE(stored.size() == 10);
 
-            for (size_t i = 0; i < stored.size(); ++i) {
+            for (int i = 0; i < int(stored.size()); ++i) {
                 REQUIRE(stored[i]->x == i);
             }
 
