@@ -11,10 +11,9 @@
                 'src/nuclear/src/util/serialise/xxhash.c',
                 'src/nuclear/src/util/network/get_interfaces.cpp'
             ],
-            'cflags': [
-            ],
+            'cflags': [],
             'include_dirs': [
-                '<!(node -e "require(\'nan\')")',
+                '<!@(node -p "require(\'node-addon-api\').include")',
                 'src/nuclear/src/include'
             ],
             'msvs_settings': {
