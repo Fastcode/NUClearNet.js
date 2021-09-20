@@ -28,6 +28,6 @@
   },
   "dependencies": {
     "bindings": "^1.5.0",
-    "nan": "^2.14.0"
+    "node-addon-api": "^4.2.0"
   }
 }
