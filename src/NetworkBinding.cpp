@@ -25,19 +25,20 @@ using extension::network::NUClearNetwork;
 
 NetworkBinding::NetworkBinding(const Napi::CallbackInfo& info): Napi::ObjectWrap<NetworkBinding>(info) {}
 
-void NetworkBinding::Hash(const Nan::FunctionCallbackInfo<v8::Value>& info) {
-    if (info[0]->IsString()) {
+Napi::Value NetworkBinding::Hash(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() > 0 && info[0].IsString()) {
         // Calculate hash
-        std::string s = *Nan::Utf8String(info[0]);
+        std::string s = info[0].As<Napi::String>().Utf8Value();
         uint64_t hash = XXH64(s.c_str(), s.size(), 0x4e55436c);
 
         // Return hash
-        info.GetReturnValue().Set(
-            Nan::CopyBuffer(reinterpret_cast<const char*>(&hash), sizeof(uint64_t)).ToLocalChecked().As<v8::Value>());
+        return 
+            Napi::Buffer<char>::Copy(env, reinterpret_cast<const char*>(&hash), sizeof(uint64_t)).As<Napi::Value>();
     }
-    // Otherwise, we accept null and undefined to mean everybody
     else {
-        Nan::ThrowError("Can only hash strings");
+        Napi::Error::New(env, "Can only hash strings").ThrowAsJavaScriptException();
     }
 }
 
