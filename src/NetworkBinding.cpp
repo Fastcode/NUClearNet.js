@@ -218,43 +218,45 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
     }
 }
 
-void NetworkBinding::Reset(const Nan::FunctionCallbackInfo<v8::Value>& info) {
-
+void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
     // info[0] = name
     // info[1] = mutlicast group
     // info[2] = port
     // info[3] = mtu
 
+    Napi::Env env = info.Env();
+
     std::string name     = "";
     std::string group    = "239.226.152.162";
-    uint32_t port        = Nan::To<uint32_t>(info[2]).FromMaybe(7447);
-    uint32_t network_mtu = Nan::To<uint32_t>(info[3]).FromMaybe(1500);
+    uint32_t port        = info[2].IsNumber() ? info[2].As<Napi::Number>().Uint32Value() : 7447;
+    uint32_t network_mtu = info[3].IsNumber() ? info[3].As<Napi::Number>().Uint32Value() : 1500;
 
     // Multicast Group
-    if (info[1]->IsString()) {
-        group = *Nan::Utf8String(info[1]);
+    if (info[1].IsString()) {
+        group = info[1].As<Napi::String>().Utf8Value();
     }
     else {
-        Nan::ThrowError("Multicast group must be a string");
+        Napi::Error::New(env, "Multicast group must be a string").ThrowAsJavaScriptException();
+        return;
     }
 
     // Name Group
-    if (info[0]->IsString()) {
-        name = *Nan::Utf8String(info[0]);
+    if (info[0].IsString()) {
+        name = info[0].As<Napi::String>().Utf8Value();
     }
     else {
-        Nan::ThrowError("Name must be a string");
+        Napi::Error::New(env, "Name must be a string").ThrowAsJavaScriptException();
+        return;
     }
 
     // Perform the reset
     try {
-        NetworkBinding* bind = ObjectWrap::Unwrap<NetworkBinding>(info.Holder());
-        bind->net.reset(name, group, port, network_mtu);
-
-        Nan::AsyncQueueWorker(new NetworkListener(bind));
+        this->net.reset(name, group, port, network_mtu);
+        auto asyncWorker = new NetworkListener(this);
+        asyncWorker.Queue();
     }
     catch (const std::exception& ex) {
-        Nan::ThrowError(ex.what());
+        Napi::Error::New(env, ex.what()).ThrowAsJavaScriptException();
     }
 }
 
