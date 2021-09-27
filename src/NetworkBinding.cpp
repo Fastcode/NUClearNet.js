@@ -42,11 +42,18 @@ Napi::Value NetworkBinding::Hash(const Napi::CallbackInfo& info) {
     }
 }
 
-void NetworkBinding::Send(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     // info[0] == hash
     // info[1] == payload
     // info[2] == target
     // info[3] == reliable
+
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 4) {
+        Napi::Error::New(env, "Expected 4 arguments, got fewer").ThrowAsJavaScriptException();
+        return;
+    }
 
     uint64_t hash = 0;
     std::vector<char> payload;
@@ -54,51 +61,57 @@ void NetworkBinding::Send(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     bool reliable      = false;
 
     // Read reliablity information
-    reliable = Nan::To<bool>(info[3]).ToChecked();
+    reliable = info[3].As<Napi::Boolean>().Value();
 
     // Read target information
     // If we have a string here use it
-    if (info[2]->IsString()) {
-        target = *Nan::Utf8String(info[2]);
+    if (info[2].IsString()) {
+        target = info[2].As<Napi::String>().Utf8Value();
     }
     // Otherwise, we accept null and undefined to mean everybody
-    else if (!info[2]->IsUndefined() && !info[2]->IsNull()) {
-        Nan::ThrowError("Invalid target for the message");
+    else if (!info[2].IsUndefined() && !info[2].IsNull()) {
+        Napi::Error::New(env, "Invalid target for the message").ThrowAsJavaScriptException();
+        return;
     }
 
     // Read the data information
-    Nan::TypedArrayContents<char> d(info[1]);
-    if (*d == nullptr) {
-        Nan::ThrowError("Provided data to send was not a readable");
+    if (info[1].IsTypedArray()) {
+        Napi::ArrayBuffer buffer = info[1].As<Napi::TypedArray>().ArrayBuffer();
+        char* data = reinterpret_cast<char*>(buffer.Data());
+
+        // Put the data into the vector
+        payload.insert(payload.begin(), data, data + buffer.ByteLength());
     }
     else {
-        // Put the data into the vector
-        payload.insert(payload.begin(), *d, *d + d.length());
+        Napi::Error::New(env, "Provided data to send was not a readable").ThrowAsJavaScriptException();
+        return;
     }
 
     // If we have a string XXHash to get the hash
-    if (info[0]->IsString()) {
-        std::string s = *Nan::Utf8String(info[0]);
+    if (info[0].IsString()) {
+        std::string s = info[0].As<Napi::String>().Utf8Value();
         hash          = XXH64(s.c_str(), s.size(), 0x4e55436c);
     }
     // Otherwise try to interpret it as a hash
     else {
-        Nan::TypedArrayContents<uint8_t> h(info[0]);
-        if (h.length() == 8) {
-            std::memcpy(&hash, *h, 8);
+        Napi::ArrayBuffer buffer = info[0].As<Napi::TypedArray>().ArrayBuffer();
+        uint8_t* data = reinterpret_cast<uint8_t*>(buffer.Data());
+
+        if (buffer.ByteLength() == 8) {
+            std::memcpy(&hash, data, 8);
         }
         else {
-            Nan::ThrowError("Invalid hash object");
+            Napi::Error::New(env, "Invalid hash object").ThrowAsJavaScriptException();
+            return;
         }
     }
 
     // Perform the send
     try {
-        NetworkBinding* bind = ObjectWrap::Unwrap<NetworkBinding>(info.Holder());
-        bind->net.send(hash, payload, target, reliable);
+        this->net.send(hash, payload, target, reliable);
     }
     catch (const std::exception& ex) {
-        Nan::ThrowError(ex.what());
+        Napi::Error::New(env, ex.what()).ThrowAsJavaScriptException();
     }
 }
 
