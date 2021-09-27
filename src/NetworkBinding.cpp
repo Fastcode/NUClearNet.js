@@ -115,17 +115,17 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     }
 }
 
-void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
-    if (info[0]->IsString() && info[1]->IsFunction()) {
+void NetworkBinding::On(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
 
-        std::string event    = *Nan::Utf8String(info[0]);
-        auto cb              = std::make_shared<Nan::Callback>(info[1].As<v8::Function>());
-        NetworkBinding* bind = ObjectWrap::Unwrap<NetworkBinding>(info.Holder());
+    if (info[0].IsString() && info[1].IsFunction()) {
+        std::string event    = info[0].As<Napi::String>().Utf8Value();
+        auto cb              = std::make_shared<Napi::Function>(info[1].As<Napi::Function>());
 
         if (event == "packet") {
-            bind->net.set_packet_callback([cb = std::move(cb)](
+            this->net.set_packet_callback([cb = std::move(cb), env](
                 const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, const bool& reliable, std::vector<char>&& payload) {
-                Nan::HandleScope scope;
+                Napi::HandleScope scope(env);
 
                 std::string name = t.name;
                 std::string address;
@@ -148,22 +148,19 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
                 }
                 address = c;
 
-                v8::Local<v8::Value> argv[6] = {
-                    Nan::New<v8::String>(name).ToLocalChecked().As<v8::Value>(),
-                    Nan::New<v8::String>(address).ToLocalChecked().As<v8::Value>(),
-                    Nan::New<v8::Integer>(port).As<v8::Value>(),
-                    Nan::New<v8::Boolean>(reliable).As<v8::Value>(),
-                    Nan::CopyBuffer(reinterpret_cast<const char*>(&hash), sizeof(uint64_t))
-                        .ToLocalChecked()
-                        .As<v8::Value>(),
-                    Nan::CopyBuffer(payload.data(), payload.size()).ToLocalChecked().As<v8::Value>()};
-
-                Nan::Call(*cb, 6, argv);
+                cb->Call(env.Global(), {
+                    Napi::String::New(env, name),
+                    Napi::String::New(env, address),
+                    Napi::Number::New(env, port),
+                    Napi::Boolean::New(env, reliable),
+                    Napi::Buffer<uint64_t>::Copy(env, &hash, sizeof(uint64_t)),
+                    Napi::Buffer<char>::Copy(env, payload.data(), payload.size()),
+                });
             });
         }
         else if (event == "join" || event == "leave") {
-            auto f = [cb = std::move(cb)](const NUClearNetwork::NetworkTarget& t) {
-                Nan::HandleScope scope;
+            auto f = [cb = std::move(cb), env](const NUClearNetwork::NetworkTarget& t) {
+                Napi::HandleScope scope(env);
 
                 std::string name = t.name;
                 std::string address;
@@ -184,40 +181,40 @@ void NetworkBinding::On(const Nan::FunctionCallbackInfo<v8::Value>& info) {
                         port = ntohs(t.target.ipv6.sin6_port);
                         break;
 
-                    default: Nan::ThrowError("The system has a corrupted network peer record.");
+                    default:
+                        Napi::Error::New(env, "The system has a corrupted network peer record.").ThrowAsJavaScriptException();
+                        return;
                 }
                 address = c;
 
-                v8::Local<v8::Value> argv[3] = {Nan::New<v8::String>(name).ToLocalChecked().As<v8::Value>(),
-                                                Nan::New<v8::String>(address).ToLocalChecked().As<v8::Value>(),
-                                                Nan::New<v8::Integer>(port).As<v8::Value>()};
-
-                Nan::Call(*cb, 3, argv);
+                cb->Call(env.Global(), {
+                    Napi::String::New(env, name),
+                    Napi::String::New(env, address),
+                    Napi::Number::New(env, port),
+                });
             };
 
             if (event == "join") {
-                bind->net.set_join_callback(std::move(f));
+                this->net.set_join_callback(std::move(f));
             }
             else {
-                bind->net.set_leave_callback(std::move(f));
+                this->net.set_leave_callback(std::move(f));
             }
         }
         else if (event == "wait") {
-            bind->net.set_next_event_callback([cb = std::move(cb)](std::chrono::steady_clock::time_point t) {
-                Nan::HandleScope scope;
+            this->net.set_next_event_callback([cb = std::move(cb), env](std::chrono::steady_clock::time_point t) {
+                Napi::HandleScope scope(env);
 
                 using namespace std::chrono;
                 int ms = duration_cast<std::chrono::duration<int, std::milli>>(t - steady_clock::now()).count();
                 ms++;  // Add 1 to account for any funky rounding
 
-                v8::Local<v8::Integer> v  = Nan::New<v8::Integer>(ms);
-                v8::Local<v8::Value> argv = v.As<v8::Value>();
-                Nan::Call(*cb, 1, &argv);
+                cb->Call(env.Global(), {Napi::Number::New(env, ms)});
             });
         }
     }
     else {
-        Nan::ThrowError("on expects a string event name and a function");
+        Napi::Error::New(env, "on expects a string event name and a function").ThrowAsJavaScriptException();
     }
 }
 
