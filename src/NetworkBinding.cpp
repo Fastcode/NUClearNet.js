@@ -272,14 +272,15 @@ void NetworkBinding::Process(const Napi::CallbackInfo& info) {
     }
 }
 
-void NetworkBinding::Shutdown(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+void NetworkBinding::Shutdown(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
     // Perform the shutdown function
     try {
-        NetworkBinding* bind = ObjectWrap::Unwrap<NetworkBinding>(info.Holder());
-        bind->net.shutdown();
+        this->net.shutdown();
     }
     catch (const std::exception& ex) {
-        Nan::ThrowError(ex.what());
+        Napi::Error::New(env, ex.what()).ThrowAsJavaScriptException();
     }
 }
 
