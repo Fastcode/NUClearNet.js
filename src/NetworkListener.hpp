@@ -19,17 +19,17 @@
 #define NETWORKLISTENER_H
 
 #include "NetworkBinding.hpp"
-#include <nan.h>
+#include <napi.h>
 
 namespace NUClear {
 
-class NetworkListener : public Nan::AsyncProgressWorker {
+class NetworkListener : public Napi::AsyncProgressWorker<void> {
 public:
     NetworkListener(NetworkBinding* binding);
-    void Execute(const ExecutionProgress& p);
-    void HandleProgressCallback(const char*, size_t);
-    void HandleOKCallback();
-    void HandleErrorCallback();
+    void Execute(const Napi::AsyncProgressWorker<void>::ExecutionProgress& p);
+    void OnProgress(const char* data, size_t count);
+    void OnOK();
+    void OnError();
 
     NetworkBinding* binding;
 
