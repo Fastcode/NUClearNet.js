@@ -19,7 +19,8 @@
 
 namespace NUClear {
 NetworkListener::NetworkListener(NetworkBinding* binding)
-: Nan::AsyncProgressWorker(new Nan::Callback()), binding(binding) {
+: Napi::AsyncProgressWorker<void>(Napi::Function::Function()), binding(binding) {
+// : Napi::AsyncProgressWorker<void>(new Napi::FunctionReference()), binding(binding) {
 
     std::vector<NUClear::fd_t> notifyfds = binding->net.listen_fds();
 
@@ -40,7 +41,7 @@ NetworkListener::NetworkListener(NetworkBinding* binding)
 #endif  // _WIN32
 }
 
-void NetworkListener::Execute(const ExecutionProgress& p) {
+void NetworkListener::Execute(const Napi::AsyncProgressWorker<void>::ExecutionProgress& p) {
     bool run = true;
     while (run) {
         bool data = false;
@@ -84,15 +85,15 @@ void NetworkListener::Execute(const ExecutionProgress& p) {
     }
 }
 
-void NetworkListener::HandleProgressCallback(const char*, size_t) {
-    Nan::HandleScope scope;
+void NetworkListener::OnProgress(const char*, size_t) {
+    // Napi::HandleScope scope(env);
 
     // Call process when there is data
-    binding->net.process();
+    this->net.process();
 }
 
-void NetworkListener::HandleOKCallback() {}
+void NetworkListener::OnOK() {}
 
-void NetworkListener::HandleErrorCallback() {}
+void NetworkListener::OnError() {}
 
 }  // namespace NUClear
