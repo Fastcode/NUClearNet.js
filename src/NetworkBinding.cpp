@@ -23,7 +23,7 @@ namespace NUClear {
 
 using extension::network::NUClearNetwork;
 
-NetworkBinding::NetworkBinding() {}
+NetworkBinding::NetworkBinding(const Napi::CallbackInfo& info): Napi::ObjectWrap<NetworkBinding>(info) {}
 
 void NetworkBinding::Hash(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     if (info[0]->IsString()) {
@@ -269,42 +269,54 @@ void NetworkBinding::Shutdown(const Nan::FunctionCallbackInfo<v8::Value>& info) 
     }
 }
 
-void NetworkBinding::Init(v8::Local<v8::Object> exports, v8::Local<v8::Object> module) {
-    Nan::HandleScope scope;
+void NetworkBinding::Init(Napi::Env env, Napi::Object exports) {
+    // Napi::HandleScope scope(env);
 
-    // Prepare constructor template
-    v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(New);
-    tpl->SetClassName(Nan::New("NetworkBinding").ToLocalChecked());
-    tpl->InstanceTemplate()->SetInternalFieldCount(1);
+    Napi::Function func =
+      DefineClass(env,
+                  "NetworkBinding",
+                  {InstanceMethod("send", &NetworkBinding::Send),
+                   InstanceMethod("on", &NetworkBinding::On),
+                   InstanceMethod("reset", &NetworkBinding::Reset),
+                   InstanceMethod("process", &NetworkBinding::Process),
+                   InstanceMethod("shutdown", &NetworkBinding::Shutdown),
+                   InstanceMethod("hash", &NetworkBinding::Hash)});
 
-    // Prototype
-    Nan::SetPrototypeMethod(tpl, "send", Send);
-    Nan::SetPrototypeMethod(tpl, "on", On);
-    Nan::SetPrototypeMethod(tpl, "reset", Reset);
-    Nan::SetPrototypeMethod(tpl, "process", Process);
-    Nan::SetPrototypeMethod(tpl, "shutdown", Shutdown);
-    Nan::SetPrototypeMethod(tpl, "hash", Hash);
+    Napi::FunctionReference* constructor = new Napi::FunctionReference();
 
-    constructor.Reset();
+    // Create a persistent reference to the class constructor. This will allow
+    // a function called on a class prototype and a function
+    // called on instance of a class to be distinguished from each other.
+    *constructor = Napi::Persistent(func);
+    env.SetInstanceData(constructor);
 
-    auto ctx = Nan::GetCurrentContext();
-    module->Set(ctx, Nan::New("exports").ToLocalChecked(), tpl->GetFunction(ctx).ToLocalChecked()).ToChecked();
+    exports.Set("NetworkBinding", func);
+
+    // Store the constructor as the add-on instance data. This will allow this
+    // add-on to support multiple instances of itself running on multiple worker
+    // threads, as well as multiple instances of itself running in different
+    // contexts on the same thread.
+    env.SetInstanceData<Napi::FunctionReference>(constructor);
 }
 
-void NetworkBinding::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+/*
+void NetworkBinding::New(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    
     // Invoked as constructor: `new MyObject(...)`
     if (info.IsConstructCall()) {
         NetworkBinding* obj = new NetworkBinding();
         obj->Wrap(info.This());
-        info.GetReturnValue().Set(info.This());
+        return info.This();
     }
     // Invoked as function: `MyObject(...)` convert to construct call
     else {
-        v8::Local<v8::Function> cons = Nan::New<v8::Function>(constructor);
-        info.GetReturnValue().Set(Nan::NewInstance(cons, 0, nullptr).ToLocalChecked());
+        Napi::Function cons = Napi::Function::New(env, constructor);
+        return Napi::NewInstance(cons, 0, nullptr);
     }
 }
 
-Nan::Persistent<v8::Function> NetworkBinding::constructor;
+Napi::FunctionReference NetworkBinding::constructor;
+*/
 
 }  // namespace NUClear
