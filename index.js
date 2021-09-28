@@ -17,11 +17,13 @@
 
 'use strict';
 
-var NetworkBinding = require('bindings')('nuclearnet');
-var util = require('util');
-var EventEmitter = require('events').EventEmitter;
+const NetworkBinding = require('bindings')('nuclearnet');
+const { EventEmitter } = require('events');
 
-var NUClearNet = function() {
+class NUClearNet extends EventEmitter {
+  constructor() {
+    super();
+
     // Create a new network object
     this._net = new NetworkBinding();
     this._callbackMap = {};
@@ -29,113 +31,114 @@ var NUClearNet = function() {
     this._waiting = 0;
 
     // We have started listening to a new type
-    this.on('newListener', function (event) {
-        if(event !== 'nuclear_join'
-         && event !== 'nuclear_leave'
-         && event !== 'nuclear_packet'
-         && event !== 'newListener'
-         && event !== 'removeListener'
-         && this.listenerCount(event) === 0) {
-            var hash = this._net.hash(event);
-            this._callbackMap[hash] = event;
-        }
-    }.bind(this));
+    this.on('newListener', (event) => {
+      if (
+        event !== 'nuclear_join' &&
+        event !== 'nuclear_leave' &&
+        event !== 'nuclear_packet' &&
+        event !== 'newListener' &&
+        event !== 'removeListener' &&
+        this.listenerCount(event) === 0
+      ) {
+        const hash = this._net.hash(event);
+        this._callbackMap[hash] = event;
+      }
+    });
 
     // We are no longer listening to this type
-    this.on('removeListener', function (event) {
-        // If we are no longer listening to this type
-        if(event !== 'nuclear_join'
-         && event !== 'nuclear_leave'
-         && event !== 'nuclear_packet'
-         && event !== 'newListener'
-         && event !== 'removeListener'
-         && this.listenerCount(event) === 0) {
-            // Get our hash and delete it
-            var hash = this._net.hash(event);
-            delete this._callbackMap[hash];
-        }
-    }.bind(this));
+    this.on('removeListener', (event) => {
+      // If we are no longer listening to this type
+      if (
+        event !== 'nuclear_join' &&
+        event !== 'nuclear_leave' &&
+        event !== 'nuclear_packet' &&
+        event !== 'newListener' &&
+        event !== 'removeListener' &&
+        this.listenerCount(event) === 0
+      ) {
+        // Get our hash and delete it
+        const hash = this._net.hash(event);
+        delete this._callbackMap[hash];
+      }
+    });
 
     // Bind our callback functions
     this._net.on('packet', this._onPacket.bind(this));
     this._net.on('join', this._onJoin.bind(this));
     this._net.on('leave', this._onLeave.bind(this));
     this._net.on('wait', this._onWait.bind(this));
-};
+  }
 
-// Inherit from event emitter
-util.inherits(NUClearNet, EventEmitter);
-
-NUClearNet.prototype._onPacket = function(name, address, port, reliable, hash, payload) {
-
-    var eventName = this._callbackMap[hash];
+  _onPacket(name, address, port, reliable, hash, payload) {
+    const eventName = this._callbackMap[hash];
 
     // Construct our packet
-    var packet = {
-        'peer': {
-            'name': name,
-            'address': address,
-            'port': port
-        },
-        'payload': payload,
-        'type': eventName,
-        'hash': hash,
-        'reliable': reliable
+    const packet = {
+      peer: {
+        name: name,
+        address: address,
+        port: port,
+      },
+      payload: payload,
+      type: eventName,
+      hash: hash,
+      reliable: reliable,
     };
 
     // Emit via nuclear_packet for people listening to everything
-    this.emit('nuclear_packet', packet)
+    this.emit('nuclear_packet', packet);
 
     // If someone was listening to this send it to them specifically too
     if (eventName !== undefined) {
-        this.emit(eventName, packet)
+      this.emit(eventName, packet);
     }
-};
+  }
 
-NUClearNet.prototype._onJoin = function(name, address, port) {
+  _onJoin(name, address, port) {
     this.emit('nuclear_join', {
-        'name': name,
-        'address': address,
-        'port': port
+      name: name,
+      address: address,
+      port: port,
     });
-};
+  }
 
-NUClearNet.prototype._onLeave = function(name, address, port) {
+  _onLeave(name, address, port) {
     this.emit('nuclear_leave', {
-        'name': name,
-        'address': address,
-        'port': port
+      name: name,
+      address: address,
+      port: port,
     });
-};
+  }
 
-NUClearNet.prototype._onWait = function(duration) {
+  _onWait(duration) {
     ++this._waiting;
-    setTimeout(function() {
-        --this._waiting;
 
-        // Only process if we're active
-        if (this._active) {
-            this._net.process();
-        }
+    setTimeout(() => {
+      --this._waiting;
 
-        // Sometimes due to weird timing artifacts we run out of these
-        // Restart in 100ms!
-        if (this._active && this._waiting === 0) {
-            this._onWait(100);
-        }
-    }.bind(this), duration);
-}
+      // Only process if we're active
+      if (this._active) {
+        this._net.process();
+      }
 
-NUClearNet.prototype.hash = function(data) {
+      // Sometimes due to weird timing artifacts we run out of these
+      // Restart in 100ms!
+      if (this._active && this._waiting === 0) {
+        this._onWait(100);
+      }
+    }, duration);
+  }
+
+  hash(data) {
     return this._net.hash(data);
-};
+  }
 
-NUClearNet.prototype.connect = function (options) {
+  connect(options) {
     // Default some of the options
-    var name = options.name;
-    var address = options.address === undefined ? '239.226.152.162' : options.address;
-    var port = options.port === undefined ? 7447 : options.port;
-    var mtu = options.mtu === undefined ? 1500 : options.mtu;
+    const name = options.name;
+    const address = options.address === undefined ? '239.226.152.162' : options.address;
+    const port = options.port === undefined ? 7447 : options.port;
+    const mtu = options.mtu === undefined ? 1500 : options.mtu;
 
     // Connect to the network
     this._active = true;
@@ -143,20 +146,20 @@ NUClearNet.prototype.connect = function (options) {
 
     // Run our first "process" to kick things off
     this._net.process();
-};
+  }
 
-NUClearNet.prototype.disconnect = function() {
+  disconnect() {
     this._active = false;
     this._net.shutdown();
-};
+  }
 
-NUClearNet.prototype.send = function (options) {
+  send(options) {
     if (!this._active) {
-        throw new Error("The network is not currently connected");
+      throw new Error('The network is not currently connected');
+    } else {
+      this._net.send(options.type, options.payload, options.target, options.reliable);
     }
-    else {
-        this._net.send(options.type, options.payload, options.target, options.reliable);
-    }
-};
+  }
+}
 
 exports.NUClearNet = NUClearNet;
