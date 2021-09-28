@@ -34,7 +34,7 @@ Napi::Value NetworkBinding::Hash(const Napi::CallbackInfo& info) {
         uint64_t hash = XXH64(s.c_str(), s.size(), 0x4e55436c);
 
         // Return hash
-        return 
+        return
             Napi::Buffer<char>::Copy(env, reinterpret_cast<const char*>(&hash), sizeof(uint64_t)).As<Napi::Value>();
     }
     else {
@@ -60,7 +60,7 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     std::string target = "";
     bool reliable      = false;
 
-    // Read reliablity information
+    // Read reliability information
     reliable = info[3].As<Napi::Boolean>().Value();
 
     // Read target information
@@ -253,7 +253,7 @@ void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
     try {
         this->net.reset(name, group, port, network_mtu);
         auto asyncWorker = new NetworkListener(this);
-        asyncWorker.Queue();
+        asyncWorker->Queue();
     }
     catch (const std::exception& ex) {
         Napi::Error::New(env, ex.what()).ThrowAsJavaScriptException();
@@ -317,7 +317,7 @@ void NetworkBinding::Init(Napi::Env env, Napi::Object exports) {
 /*
 void NetworkBinding::New(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    
+
     // Invoked as constructor: `new MyObject(...)`
     if (info.IsConstructCall()) {
         NetworkBinding* obj = new NetworkBinding();

@@ -23,13 +23,13 @@
 
 namespace NUClear {
 
-class NetworkListener : public Napi::AsyncProgressWorker<void> {
+class NetworkListener : public Napi::AsyncProgressWorker<char> {
 public:
     NetworkListener(NetworkBinding* binding);
-    void Execute(const Napi::AsyncProgressWorker<void>::ExecutionProgress& p);
-    void OnProgress(const char* data, size_t count);
-    void OnOK();
-    void OnError();
+    void Execute(const Napi::AsyncProgressWorker<char>::ExecutionProgress& p) override;
+    void OnProgress(const char* data, size_t count) override;
+    void OnOK() override;
+    void OnError(const Napi::Error& e) override;
 
     NetworkBinding* binding;
 
