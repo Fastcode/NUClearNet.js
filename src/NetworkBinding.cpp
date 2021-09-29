@@ -39,6 +39,7 @@ Napi::Value NetworkBinding::Hash(const Napi::CallbackInfo& info) {
     }
     else {
         Napi::Error::New(env, "Can only hash strings").ThrowAsJavaScriptException();
+        return env.Null();
     }
 }
 
@@ -129,7 +130,7 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
 
                 std::string name = t.name;
                 std::string address;
-                uint16_t port;
+                uint16_t port = 0;
 
                 // Extract the IP address and port
                 char c[255];
