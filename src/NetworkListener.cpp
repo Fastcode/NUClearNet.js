@@ -89,7 +89,7 @@ void NetworkListener::OnProgress(const char*, size_t) {
     // Napi::HandleScope scope(env);
 
     // Call process when there is data
-    this->net.process();
+    this->binding->net.process();
 }
 
 void NetworkListener::OnOK() {}
