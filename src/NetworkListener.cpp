@@ -80,7 +80,9 @@ void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionPr
 #endif  // _WIN32
         // Notify the system something happened if it's running
         if (run && data) {
-            p.Signal();
+            // Should really be p.Signal() but there seems to be a bug with it at the moment
+            // See https://github.com/nodejs/node-addon-api/issues/1081
+            p.Send(nullptr, 0);
         }
     }
 }
