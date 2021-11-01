@@ -25,7 +25,7 @@ namespace NUClear {
 
 class NetworkListener : public Napi::AsyncProgressWorker<char> {
 public:
-    NetworkListener(NetworkBinding* binding);
+    NetworkListener(Napi::Env& env, NetworkBinding* binding);
     void Execute(const Napi::AsyncProgressWorker<char>::ExecutionProgress& p) override;
     void OnProgress(const char* data, size_t count) override;
     void OnOK() override;

@@ -18,8 +18,8 @@
 #include "NetworkListener.hpp"
 
 namespace NUClear {
-NetworkListener::NetworkListener(NetworkBinding* binding)
-: Napi::AsyncProgressWorker<char>(Napi::Function()), binding(binding) {
+NetworkListener::NetworkListener(Napi::Env& env, NetworkBinding* binding)
+: Napi::AsyncProgressWorker<char>(env), binding(binding) {
 // : Napi::AsyncProgressWorker<char>(new Napi::FunctionReference()), binding(binding) {
 
     std::vector<NUClear::fd_t> notifyfds = binding->net.listen_fds();

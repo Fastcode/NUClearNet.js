@@ -17,7 +17,7 @@
 
 'use strict';
 
-const NetworkBinding = require('bindings')('nuclearnet');
+const { NetworkBinding } = require('bindings')('nuclearnet');
 const { EventEmitter } = require('events');
 
 class NUClearNet extends EventEmitter {
@@ -71,6 +71,8 @@ class NUClearNet extends EventEmitter {
 
   _onPacket(name, address, port, reliable, hash, payload) {
     const eventName = this._callbackMap[hash];
+
+    console.log('got packet', { eventName, payload, length: payload.length })
 
     // Construct our packet
     const packet = {
@@ -157,7 +159,7 @@ class NUClearNet extends EventEmitter {
     if (!this._active) {
       throw new Error('The network is not currently connected');
     } else {
-      this._net.send(options.type, options.payload, options.target, options.reliable);
+      this._net.send(options.type, options.payload, options.target, options.reliable ?? false);
     }
   }
 }

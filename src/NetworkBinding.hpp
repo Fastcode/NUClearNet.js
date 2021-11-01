@@ -19,6 +19,7 @@
 #define NETWORKBINDING_H
 
 #include "nuclear/src/extension/network/NUClearNetwork.hpp"
+#include "napi-thread-safe-callback.hpp"
 #include <napi.h>
 
 namespace NUClear {

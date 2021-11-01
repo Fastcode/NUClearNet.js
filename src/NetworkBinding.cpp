@@ -44,11 +44,6 @@ Napi::Value NetworkBinding::Hash(const Napi::CallbackInfo& info) {
 }
 
 void NetworkBinding::Send(const Napi::CallbackInfo& info) {
-    // info[0] == hash
-    // info[1] == payload
-    // info[2] == target
-    // info[3] == reliable
-
     Napi::Env env = info.Env();
 
     if (info.Length() < 4) {
@@ -56,32 +51,46 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
         return;
     }
 
+    const Napi::Value& hash_arg = info[0];
+    const Napi::Value& payload_arg = info[1];
+    const Napi::Value& target_arg = info[2];
+    const Napi::Value& reliable_arg = info[3];
+
     uint64_t hash = 0;
     std::vector<char> payload;
     std::string target = "";
     bool reliable      = false;
 
     // Read reliability information
-    reliable = info[3].As<Napi::Boolean>().Value();
+    if (reliable_arg.IsBoolean()) {
+        reliable = reliable_arg.As<Napi::Boolean>().Value();
+    } else {
+        Napi::Error::New(env, "Invalid `reliable` for the message, expected boolean").ThrowAsJavaScriptException();
+        return;
+    }
 
     // Read target information
     // If we have a string here use it
-    if (info[2].IsString()) {
-        target = info[2].As<Napi::String>().Utf8Value();
+    if (target_arg.IsString()) {
+        target = target_arg.As<Napi::String>().Utf8Value();
     }
     // Otherwise, we accept null and undefined to mean everybody
-    else if (!info[2].IsUndefined() && !info[2].IsNull()) {
+    else if (!target_arg.IsUndefined() && !target_arg.IsNull()) {
         Napi::Error::New(env, "Invalid target for the message").ThrowAsJavaScriptException();
         return;
     }
 
     // Read the data information
-    if (info[1].IsTypedArray()) {
-        Napi::ArrayBuffer buffer = info[1].As<Napi::TypedArray>().ArrayBuffer();
+    if (payload_arg.IsTypedArray()) {
+        Napi::ArrayBuffer buffer = payload_arg.As<Napi::TypedArray>().ArrayBuffer();
         char* data = reinterpret_cast<char*>(buffer.Data());
 
         // Put the data into the vector
-        payload.insert(payload.begin(), data, data + buffer.ByteLength());
+        // payload.insert(payload.begin(), *d, *d + d.length()); // ORIGINAL CODE, from NAN
+
+        // Put the data into the vector /// TODO: GET THIS WORKING: currently the buffer that shows up in JS
+                                        /// incorrect (way longer than expected)
+        payload.insert(payload.begin(), data, data + (buffer.ByteLength() / sizeof(char)));
     }
     else {
         Napi::Error::New(env, "Provided data to send was not a readable").ThrowAsJavaScriptException();
@@ -89,13 +98,13 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     }
 
     // If we have a string XXHash to get the hash
-    if (info[0].IsString()) {
-        std::string s = info[0].As<Napi::String>().Utf8Value();
+    if (hash_arg.IsString()) {
+        std::string s = hash_arg.As<Napi::String>().Utf8Value();
         hash          = XXH64(s.c_str(), s.size(), 0x4e55436c);
     }
     // Otherwise try to interpret it as a hash
     else {
-        Napi::ArrayBuffer buffer = info[0].As<Napi::TypedArray>().ArrayBuffer();
+        Napi::ArrayBuffer buffer = hash_arg.As<Napi::TypedArray>().ArrayBuffer();
         uint8_t* data = reinterpret_cast<uint8_t*>(buffer.Data());
 
         if (buffer.ByteLength() == 8) {
@@ -121,12 +130,16 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
 
     if (info[0].IsString() && info[1].IsFunction()) {
         std::string event    = info[0].As<Napi::String>().Utf8Value();
-        auto cb              = std::make_shared<Napi::Function>(info[1].As<Napi::Function>());
+
+        // ThreadSafeCallback is from the napi-thread-safe-callback library, it allows for running a JS callback from a
+        // thread that isn't the main addon thread (like where the NUClearNet packet callbacks are called from).
+        // Similar thread-safe callback functionality has been added to NAPI natively, but it's still experimental at
+        // the time of writing.
+        auto cb = std::make_shared<ThreadSafeCallback>(info[1].As<Napi::Function>());
 
         if (event == "packet") {
-            this->net.set_packet_callback([cb = std::move(cb), env](
+            this->net.set_packet_callback([cb = std::move(cb)](
                 const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, const bool& reliable, std::vector<char>&& payload) {
-                Napi::HandleScope scope(env);
 
                 std::string name = t.name;
                 std::string address;
@@ -149,20 +162,20 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
                 }
                 address = c;
 
-                cb->Call(env.Global(), {
-                    Napi::String::New(env, name),
-                    Napi::String::New(env, address),
-                    Napi::Number::New(env, port),
-                    Napi::Boolean::New(env, reliable),
-                    Napi::Buffer<uint64_t>::Copy(env, &hash, sizeof(uint64_t)),
-                    Napi::Buffer<char>::Copy(env, payload.data(), payload.size()),
+                cb->call([name, address, port, reliable, hash, payload](Napi::Env env, std::vector<napi_value> &args) {
+                    args = {
+                        Napi::String::New(env, name),
+                        Napi::String::New(env, address),
+                        Napi::Number::New(env, port),
+                        Napi::Boolean::New(env, reliable),
+                        Napi::Buffer<char>::Copy(env, reinterpret_cast<const char*>(&hash), sizeof(uint64_t)),
+                        Napi::Buffer<char>::Copy(env, payload.data(), payload.size())
+                    };
                 });
             });
         }
         else if (event == "join" || event == "leave") {
-            auto f = [cb = std::move(cb), env](const NUClearNetwork::NetworkTarget& t) {
-                Napi::HandleScope scope(env);
-
+            auto f = [cb = std::move(cb)](const NUClearNetwork::NetworkTarget& t) {
                 std::string name = t.name;
                 std::string address;
                 uint16_t port = 0;
@@ -183,15 +196,20 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
                         break;
 
                     default:
-                        Napi::Error::New(env, "The system has a corrupted network peer record.").ThrowAsJavaScriptException();
+                        // The system has a corrupted network peer record, but we can't throw to JS from here, since we
+                        // don't have an env object. cb->callError(string) is available from the
+                        // napi-thread-safe-callback library, but that requires changing the callback signature on the
+                        // JS side to accept a potential error as the first argument.
                         return;
                 }
                 address = c;
 
-                cb->Call(env.Global(), {
-                    Napi::String::New(env, name),
-                    Napi::String::New(env, address),
-                    Napi::Number::New(env, port),
+                cb->call([name, address, port](Napi::Env env, std::vector<napi_value> &args) {
+                    args = {
+                        Napi::String::New(env, name),
+                        Napi::String::New(env, address),
+                        Napi::Number::New(env, port),
+                    };
                 });
             };
 
@@ -203,14 +221,14 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
             }
         }
         else if (event == "wait") {
-            this->net.set_next_event_callback([cb = std::move(cb), env](std::chrono::steady_clock::time_point t) {
-                Napi::HandleScope scope(env);
-
+            this->net.set_next_event_callback([cb = std::move(cb)](std::chrono::steady_clock::time_point t) {
                 using namespace std::chrono;
                 int ms = duration_cast<std::chrono::duration<int, std::milli>>(t - steady_clock::now()).count();
                 ms++;  // Add 1 to account for any funky rounding
 
-                cb->Call(env.Global(), {Napi::Number::New(env, ms)});
+                cb->call([ms](Napi::Env env, std::vector<napi_value> &args) {
+                    args = {Napi::Number::New(env, ms)};
+                });
             });
         }
     }
@@ -253,7 +271,7 @@ void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
     // Perform the reset
     try {
         this->net.reset(name, group, port, network_mtu);
-        auto asyncWorker = new NetworkListener(this);
+        auto asyncWorker = new NetworkListener(env, this); // deleted by NAPI's AsyncProgressWorker when done
         asyncWorker->Queue();
     }
     catch (const std::exception& ex) {
