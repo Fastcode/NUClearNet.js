@@ -5,7 +5,8 @@
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
-    "test": "node tests/test.js"
+    "build": "node-gyp build",
+    "test": "node tests/test_new.js"
   },
   "repository": {
     "type": "git",
@@ -24,7 +25,8 @@
   "homepage": "https://github.com/Fastcode/NUClearNet.js#readme",
   "gypfile": true,
   "devDependencies": {
-    "segfault-handler": "^1.0.0"
+    "segfault-handler": "^1.0.0",
+    "uvu": "^0.5.2"
   },
   "dependencies": {
     "bindings": "^1.5.0",
