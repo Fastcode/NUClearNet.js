@@ -274,7 +274,12 @@ void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
     // Perform the reset
     try {
         this->net.reset(name, group, port, network_mtu);
-        auto asyncWorker = new NetworkListener(env, this); // deleted by NAPI's AsyncProgressWorker when done
+
+        // NetworkListener extends AsyncProgressWorker, which will automatically
+        // destruct itself when done (i.e. when Execute() returns and OnOK() or
+        // OnError() are called and return)
+        auto asyncWorker = new NetworkListener(env, this);
+        
         asyncWorker->Queue();
     }
     catch (const std::exception& ex) {
@@ -342,6 +347,10 @@ void NetworkBinding::Init(Napi::Env env, Napi::Object exports) {
     // add-on to support multiple instances of itself running on multiple worker
     // threads, as well as multiple instances of itself running in different
     // contexts on the same thread.
+    //
+    // By default, the value set on the environment here will be destroyed when
+    // the add-on is unloaded using the `delete` operator, but it is also
+    // possible to supply a custom deleter.
     env.SetInstanceData<Napi::FunctionReference>(constructor);
 }
 
