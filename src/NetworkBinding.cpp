@@ -82,15 +82,14 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
 
     // Read the data information
     if (payload_arg.IsTypedArray()) {
-        Napi::ArrayBuffer buffer = payload_arg.As<Napi::TypedArray>().ArrayBuffer();
+        Napi::TypedArray typed_array = payload_arg.As<Napi::TypedArray>();
+        Napi::ArrayBuffer buffer = typed_array.ArrayBuffer();
+        
         char* data = reinterpret_cast<char*>(buffer.Data());
+        char* start = data + typed_array.ByteOffset();
+        char* end = start + typed_array.ByteLength();
 
-        // Put the data into the vector
-        // payload.insert(payload.begin(), *d, *d + d.length()); // ORIGINAL CODE, from NAN
-
-        // Put the data into the vector /// TODO: GET THIS WORKING: currently the buffer that shows up in JS
-                                        /// incorrect (way longer than expected)
-        payload.insert(payload.begin(), data, data + (buffer.ByteLength() / sizeof(char)));
+        payload.insert(payload.begin(), start, end);
     }
     else {
         Napi::Error::New(env, "Provided data to send was not a readable").ThrowAsJavaScriptException();
@@ -104,11 +103,15 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     }
     // Otherwise try to interpret it as a hash
     else {
-        Napi::ArrayBuffer buffer = hash_arg.As<Napi::TypedArray>().ArrayBuffer();
+        Napi::TypedArray typed_array = hash_arg.As<Napi::TypedArray>();
+        Napi::ArrayBuffer buffer = typed_array.ArrayBuffer();
+        
         uint8_t* data = reinterpret_cast<uint8_t*>(buffer.Data());
+        uint8_t* start = data + typed_array.ByteOffset();
+        uint8_t* end = start + typed_array.ByteLength();
 
-        if (buffer.ByteLength() == 8) {
-            std::memcpy(&hash, data, 8);
+        if (std::distance(start, end) == 8) {
+            std::memcpy(&hash, start, 8);
         }
         else {
             Napi::Error::New(env, "Invalid hash object").ThrowAsJavaScriptException();
