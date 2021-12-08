@@ -306,18 +306,27 @@ void NetworkBinding::Shutdown(const Napi::CallbackInfo& info) {
     }
 }
 
+void NetworkBinding::Destroy(const Napi::CallbackInfo& info) {
+    // Replace the ThreadSafeCallback instances to clean up the extra threads they created
+    this->net.set_packet_callback([](const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, const bool& reliable, std::vector<char>&& payload) {});
+    this->net.set_join_callback([](const NUClearNetwork::NetworkTarget& t) {});
+    this->net.set_leave_callback([](const NUClearNetwork::NetworkTarget& t) {});
+    this->net.set_next_event_callback([](std::chrono::steady_clock::time_point t) {});
+}
+
 void NetworkBinding::Init(Napi::Env env, Napi::Object exports) {
     // Napi::HandleScope scope(env);
 
     Napi::Function func =
       DefineClass(env,
                   "NetworkBinding",
-                  {InstanceMethod("send", &NetworkBinding::Send),
-                   InstanceMethod("on", &NetworkBinding::On),
-                   InstanceMethod("reset", &NetworkBinding::Reset),
-                   InstanceMethod("process", &NetworkBinding::Process),
-                   InstanceMethod("shutdown", &NetworkBinding::Shutdown),
-                   InstanceMethod("hash", &NetworkBinding::Hash)});
+                  {InstanceMethod<&NetworkBinding::Send>("send", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
+                   InstanceMethod<&NetworkBinding::On>("on", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
+                   InstanceMethod<&NetworkBinding::Reset>("reset", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
+                   InstanceMethod<&NetworkBinding::Process>("process", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
+                   InstanceMethod<&NetworkBinding::Shutdown>("shutdown", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
+                   InstanceMethod<&NetworkBinding::Hash>("hash", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
+                   InstanceMethod<&NetworkBinding::Destroy>("destroy", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
 
     Napi::FunctionReference* constructor = new Napi::FunctionReference();
 

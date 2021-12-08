@@ -34,6 +34,7 @@ public:
     void Reset(const Napi::CallbackInfo& info);
     void Process(const Napi::CallbackInfo& info);
     void Shutdown(const Napi::CallbackInfo& info);
+    void Destroy(const Napi::CallbackInfo& info);
     
     extension::network::NUClearNetwork net;
 

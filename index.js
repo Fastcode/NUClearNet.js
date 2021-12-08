@@ -29,9 +29,12 @@ class NUClearNet extends EventEmitter {
     this._callbackMap = {};
     this._active = false;
     this._waiting = 0;
+    this._destroyed = false;
 
     // We have started listening to a new type
     this.on('newListener', (event) => {
+      this.assertNotDestroyed();
+
       if (
         event !== 'nuclear_join' &&
         event !== 'nuclear_leave' &&
@@ -132,10 +135,13 @@ class NUClearNet extends EventEmitter {
   }
 
   hash(data) {
+    this.assertNotDestroyed();
     return this._net.hash(data);
   }
 
   connect(options) {
+    this.assertNotDestroyed();
+
     // Default some of the options
     const name = options.name;
     const address = options.address === undefined ? '239.226.152.162' : options.address;
@@ -151,16 +157,52 @@ class NUClearNet extends EventEmitter {
   }
 
   disconnect() {
+    this.assertNotDestroyed();
+
     this._active = false;
     this._net.shutdown();
   }
 
   send(options) {
+    this.assertNotDestroyed();
+
     if (!this._active) {
       throw new Error('The network is not currently connected');
     } else {
       this._net.send(options.type, options.payload, options.target, options.reliable ?? false);
     }
+  }
+
+  destroy() {
+    if (this._active) {
+      this.disconnect();
+    }
+
+    this.removeAllListeners();
+
+    for (const prop in this._callbackMap) {
+      delete this._callbackMap[prop];
+    }
+
+    this._net.destroy();
+
+    this._destroyed = true;
+  }
+
+  assertNotDestroyed() {
+    if (this._destroyed) {
+      throw new Error('This network instance has been destroyed');
+    }
+  }
+
+  on(...args) {
+    this.assertNotDestroyed();
+    return super.on(...args);
+  }
+
+  addListener(...args) {
+    this.assertNotDestroyed();
+    return super.addListener(...args);
   }
 }
 

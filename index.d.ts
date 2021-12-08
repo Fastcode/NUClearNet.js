@@ -127,6 +127,10 @@ export declare class NUClearNet {
     /// Does not disconnect listeners and reconnecting will resume events
     public disconnect(): void
 
+    /// Disconnect and destroy this NUClearNetwork instance, clearing all listeners
+    /// Attempting to use this instance after calling destroy() will throw an error.
+    public destroy(): void
+
     /// Send the packet over the NUClearNetwork
     /// This function will throw an error if the network is not connected
     public send(options: NUClearNetSend): void
