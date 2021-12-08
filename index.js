@@ -31,6 +31,9 @@ class NUClearNet extends EventEmitter {
     this._waiting = 0;
     this._destroyed = false;
 
+    // Stores the connect() options
+    this.options = {}
+
     // We have started listening to a new type
     this.on('newListener', (event) => {
       this.assertNotDestroyed();
@@ -141,6 +144,9 @@ class NUClearNet extends EventEmitter {
 
   connect(options) {
     this.assertNotDestroyed();
+
+    // Store the options
+    this.options = options;
 
     // Default some of the options
     const name = options.name;

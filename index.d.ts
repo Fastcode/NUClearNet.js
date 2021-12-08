@@ -97,6 +97,8 @@ export interface NUClearNetMaybeTypedPacket extends NUClearNetPacket {
  * If connect is called first you will not receive the join events from already connected peers.
  */
 export declare class NUClearNet {
+    /// Stores the `connect()` options. Is an empty object until `connect()` is called.
+    options: Partial<NUClearNetOptions>;
 
     public constructor()
 
