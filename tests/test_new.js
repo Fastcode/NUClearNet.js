@@ -225,7 +225,7 @@ test('NUClearNet can send and receive reliable targeted messages', async () => {
       }
 
       netB.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name)
+        if (packet.peer.name === netA.options.name) {
           if (packet.payload.compare(payloadToB) === 0) {
             bGotMessage = true;
             checkComplete();
@@ -239,10 +239,11 @@ test('NUClearNet can send and receive reliable targeted messages', async () => {
                 packet.payload.toString('utf-8')
             );
           }
+        }
       });
 
       netC.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name)
+        if (packet.peer.name === netA.options.name) {
           if (packet.payload.compare(payloadToC) === 0) {
             cGotMessage = true;
             checkComplete();
@@ -256,6 +257,7 @@ test('NUClearNet can send and receive reliable targeted messages', async () => {
                 packet.payload.toString('utf8')
             );
           }
+        }
       });
 
       netA.connect({
@@ -308,7 +310,7 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
       netA.on('nuclear_join', (peer) => {
         // Start sending unreliable messages to B after it joins
         if (peer.name === netB.options.name) {
-          bSendInterval && clearInterval(bSendInterval)
+          bSendInterval && clearInterval(bSendInterval);
           bSendInterval = setInterval(() => {
             netA.send({
               target: netB.options.name,
@@ -344,7 +346,7 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
       }
 
       netB.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name)
+        if (packet.peer.name === netA.options.name) {
           if (packet.payload.compare(payloadToB) === 0) {
             bGotMessage = true;
             checkComplete();
@@ -358,10 +360,11 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
                 packet.payload.toString('utf-8')
             );
           }
+        }
       });
 
       netC.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name)
+        if (packet.peer.name === netA.options.name) {
           if (packet.payload.compare(payloadToC) === 0) {
             cGotMessage = true;
             checkComplete();
@@ -375,6 +378,7 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
                 packet.payload.toString('utf8')
             );
           }
+        }
       });
 
       netA.connect({
@@ -446,7 +450,7 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
       }
 
       netB.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name)
+        if (packet.peer.name === netA.options.name) {
           if (packet.payload.compare(payload) === 0) {
             bGotMessage = true;
             checkComplete();
@@ -460,10 +464,11 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
                 packet.payload.toString('utf-8')
             );
           }
+        }
       });
 
       netC.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name)
+        if (packet.peer.name === netA.options.name) {
           if (packet.payload.compare(payload) === 0) {
             cGotMessage = true;
             checkComplete();
@@ -477,6 +482,7 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
                 packet.payload.toString('utf8')
             );
           }
+        }
       });
 
       netA.connect({
@@ -559,7 +565,7 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
       }
 
       netB.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name)
+        if (packet.peer.name === netA.options.name) {
           if (packet.payload.compare(payload) === 0) {
             bGotMessage = true;
             checkComplete();
@@ -567,16 +573,17 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
             cleanUp();
             fail(
               'netB received unexpected data' +
-              '\n  expected: ' +
-              payload.toString('utf-8') +
-              '\n    actual: ' +
-              packet.payload.toString('utf-8')
+                '\n  expected: ' +
+                payload.toString('utf-8') +
+                '\n    actual: ' +
+                packet.payload.toString('utf-8')
             );
           }
+        }
       });
 
       netC.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name)
+        if (packet.peer.name === netA.options.name) {
           if (packet.payload.compare(payload) === 0) {
             cGotMessage = true;
             checkComplete();
@@ -584,12 +591,13 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
             cleanUp();
             fail(
               'netC received unexpected data' +
-              '\n  expected: ' +
-              payload.toString('utf-8') +
-              '\n    actual: ' +
-              packet.payload.toString('utf8')
+                '\n  expected: ' +
+                payload.toString('utf-8') +
+                '\n    actual: ' +
+                packet.payload.toString('utf8')
             );
           }
+        }
       });
 
       netA.connect({
