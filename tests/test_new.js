@@ -23,12 +23,18 @@ function asyncTest(testFn, { timeout = 1000 } = {}) {
     function done() {
       if (timeoutId) {
         clearTimeout(timeoutId);
+        timeoutId = null;
       }
 
       resolve();
     }
 
     function fail(reason) {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
       reject(new Error(reason));
     }
 
