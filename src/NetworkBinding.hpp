@@ -35,8 +35,9 @@ public:
     void Process(const Napi::CallbackInfo& info);
     void Shutdown(const Napi::CallbackInfo& info);
     void Destroy(const Napi::CallbackInfo& info);
-    
+
     extension::network::NUClearNetwork net;
+    bool destroyed = false;
 
     static void Init(Napi::Env env, Napi::Object exports);
 

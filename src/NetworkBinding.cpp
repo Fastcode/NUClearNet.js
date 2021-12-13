@@ -312,6 +312,8 @@ void NetworkBinding::Shutdown(const Napi::CallbackInfo& info) {
 }
 
 void NetworkBinding::Destroy(const Napi::CallbackInfo& info) {
+    this->destroyed = true;
+
     // Replace the ThreadSafeCallback instances to clean up the extra threads they created
     this->net.set_packet_callback([](const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, const bool& reliable, std::vector<char>&& payload) {});
     this->net.set_join_callback([](const NUClearNetwork::NetworkTarget& t) {});

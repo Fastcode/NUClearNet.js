@@ -43,7 +43,7 @@ NetworkListener::NetworkListener(Napi::Env& env, NetworkBinding* binding)
 
 void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionProgress& p) {
     bool run = true;
-    while (run) {
+    while (run && !this->binding->destroyed) {
         bool data = false;
 
 #ifdef _WIN32
