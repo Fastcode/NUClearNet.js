@@ -20,8 +20,6 @@
 namespace NUClear {
 NetworkListener::NetworkListener(Napi::Env& env, NetworkBinding* binding)
 : Napi::AsyncProgressWorker<char>(env), binding(binding) {
-// : Napi::AsyncProgressWorker<char>(new Napi::FunctionReference()), binding(binding) {
-
     std::vector<NUClear::fd_t> notifyfds = binding->net.listen_fds();
 
 #ifdef _WIN32
@@ -80,7 +78,7 @@ void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionPr
 #endif  // _WIN32
         // Notify the system something happened if it's running
         if (run && data) {
-            // Should really be p.Signal() but there seems to be a bug with it at the moment
+            // Should really be `p.Signal()` here, but it has a bug at the moment
             // See https://github.com/nodejs/node-addon-api/issues/1081
             p.Send(nullptr, 0);
         }
@@ -88,9 +86,7 @@ void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionPr
 }
 
 void NetworkListener::OnProgress(const char*, size_t) {
-    // Napi::HandleScope scope(env);
-
-    // Call process when there is data
+    // If we're here in OnProgress(), then there's data to process
     this->binding->net.process();
 }
 
