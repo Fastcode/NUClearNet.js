@@ -40,9 +40,6 @@ public:
     bool destroyed = false;
 
     static void Init(Napi::Env env, Napi::Object exports);
-
-    // void New(const Napi::CallbackInfo& info);
-    // Napi::FunctionReference constructor;
 };
 
 }  // namespace NUClear

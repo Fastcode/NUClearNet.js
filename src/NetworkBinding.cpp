@@ -38,7 +38,7 @@ Napi::Value NetworkBinding::Hash(const Napi::CallbackInfo& info) {
             Napi::Buffer<char>::Copy(env, reinterpret_cast<const char*>(&hash), sizeof(uint64_t)).As<Napi::Value>();
     }
     else {
-        Napi::Error::New(env, "Can only hash strings").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Invalid input for hash(): expected a string").ThrowAsJavaScriptException();
         return env.Null();
     }
 }
@@ -47,14 +47,14 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     if (info.Length() < 4) {
-        Napi::Error::New(env, "Expected 4 arguments, got fewer").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Expected 4 arguments, got fewer").ThrowAsJavaScriptException();
         return;
     }
 
-    const Napi::Value& hash_arg = info[0];
-    const Napi::Value& payload_arg = info[1];
-    const Napi::Value& target_arg = info[2];
-    const Napi::Value& reliable_arg = info[3];
+    const Napi::Value& arg_hash = info[0];
+    const Napi::Value& arg_payload = info[1];
+    const Napi::Value& arg_target = info[2];
+    const Napi::Value& arg_reliable = info[3];
 
     uint64_t hash = 0;
     std::vector<char> payload;
@@ -62,27 +62,26 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     bool reliable      = false;
 
     // Read reliability information
-    if (reliable_arg.IsBoolean()) {
-        reliable = reliable_arg.As<Napi::Boolean>().Value();
+    if (arg_reliable.IsBoolean()) {
+        reliable = arg_reliable.As<Napi::Boolean>().Value();
     } else {
-        Napi::Error::New(env, "Invalid `reliable` for the message, expected boolean").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Invalid `reliable` option for send(): expected a boolean").ThrowAsJavaScriptException();
         return;
     }
 
-    // Read target information
-    // If we have a string here use it
-    if (target_arg.IsString()) {
-        target = target_arg.As<Napi::String>().Utf8Value();
+    // Read target information: if we have a string, use it as the target
+    if (arg_target.IsString()) {
+        target = arg_target.As<Napi::String>().Utf8Value();
     }
     // Otherwise, we accept null and undefined to mean everybody
-    else if (!target_arg.IsUndefined() && !target_arg.IsNull()) {
-        Napi::Error::New(env, "Invalid target for the message").ThrowAsJavaScriptException();
+    else if (!arg_target.IsUndefined() && !arg_target.IsNull()) {
+        Napi::TypeError::New(env, "Invalid `target` option for send(): expected a string (for targeted), or null/undefined (for untargeted)").ThrowAsJavaScriptException();
         return;
     }
 
     // Read the data information
-    if (payload_arg.IsTypedArray()) {
-        Napi::TypedArray typed_array = payload_arg.As<Napi::TypedArray>();
+    if (arg_payload.IsTypedArray()) {
+        Napi::TypedArray typed_array = arg_payload.As<Napi::TypedArray>();
         Napi::ArrayBuffer buffer = typed_array.ArrayBuffer();
 
         char* data = reinterpret_cast<char*>(buffer.Data());
@@ -92,18 +91,18 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
         payload.insert(payload.begin(), start, end);
     }
     else {
-        Napi::Error::New(env, "Provided data to send was not a readable").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Invalid `payload` option for send(): expected a Buffer").ThrowAsJavaScriptException();
         return;
     }
 
-    // If we have a string XXHash to get the hash
-    if (hash_arg.IsString()) {
-        std::string s = hash_arg.As<Napi::String>().Utf8Value();
+    // If we have a string, apply XXHash to get the hash
+    if (arg_hash.IsString()) {
+        std::string s = arg_hash.As<Napi::String>().Utf8Value();
         hash          = XXH64(s.c_str(), s.size(), 0x4e55436c);
     }
-    // Otherwise try to interpret it as a hash
-    else {
-        Napi::TypedArray typed_array = hash_arg.As<Napi::TypedArray>();
+    // Otherwise try to interpret it as a buffer that contains the hash
+    else if (arg_hash.IsTypedArray()) {
+        Napi::TypedArray typed_array = arg_hash.As<Napi::TypedArray>();
         Napi::ArrayBuffer buffer = typed_array.ArrayBuffer();
 
         uint8_t* data = reinterpret_cast<uint8_t*>(buffer.Data());
@@ -114,9 +113,12 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
             std::memcpy(&hash, start, 8);
         }
         else {
-            Napi::Error::New(env, "Invalid hash object").ThrowAsJavaScriptException();
+            Napi::TypeError::New(env, "Invalid `hash` option for send(): provided Buffer length is not 8").ThrowAsJavaScriptException();
             return;
         }
+    } else {
+        Napi::TypeError::New(env, "Invalid `hash` option for send(): expected a string or Buffer").ThrowAsJavaScriptException();
+        return;
     }
 
     // Perform the send
@@ -134,8 +136,8 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
     if (info[0].IsString() && info[1].IsFunction()) {
         std::string event    = info[0].As<Napi::String>().Utf8Value();
 
-        // ThreadSafeCallback is from the napi-thread-safe-callback library, it allows for running a JS callback from a
-        // thread that isn't the main addon thread (like where the NUClearNet packet callbacks are called from).
+        // `ThreadSafeCallback` is from the napi-thread-safe-callback npm package. It allows for running a JS callback
+        // from a thread that isn't the main addon thread (like where the NUClearNet packet callbacks are called from).
         // Similar thread-safe callback functionality has been added to NAPI natively, but it's still experimental at
         // the time of writing.
         auto cb = std::make_shared<ThreadSafeCallback>(info[1].As<Napi::Function>());
@@ -202,7 +204,8 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
                         // The system has a corrupted network peer record, but we can't throw to JS from here, since we
                         // don't have an env object. cb->callError(string) is available from the
                         // napi-thread-safe-callback library, but that requires changing the callback signature on the
-                        // JS side to accept a potential error as the first argument.
+                        // JS side to accept a potential error as the first argument. This would be a breaking change,
+                        // but we can do it if deemed necessary, and update all users of nuclearnet.js.
                         return;
                 }
                 address = c;
@@ -234,40 +237,44 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
                 });
             });
         }
+        else {
+            Napi::TypeError::New(env, "Invalid `eventName` argument for on(): expected one of 'packet', 'join', 'leave', or 'wait'").ThrowAsJavaScriptException();
+            return;
+        }
     }
     else {
-        Napi::Error::New(env, "on expects a string event name and a function").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Invalid arguments for on(): expected an event name (string) and a callback (function)").ThrowAsJavaScriptException();
     }
 }
 
 void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
-    // info[0] = name
-    // info[1] = mutlicast group
-    // info[2] = port
-    // info[3] = mtu
-
     Napi::Env env = info.Env();
+
+    const Napi::Value& arg_name = info[0];
+    const Napi::Value& arg_group = info[1];
+    const Napi::Value& arg_port = info[2];
+    const Napi::Value& arg_mtu = info[3];
 
     std::string name     = "";
     std::string group    = "239.226.152.162";
-    uint32_t port        = info[2].IsNumber() ? info[2].As<Napi::Number>().Uint32Value() : 7447;
-    uint32_t network_mtu = info[3].IsNumber() ? info[3].As<Napi::Number>().Uint32Value() : 1500;
+    uint32_t port        = arg_port.IsNumber() ? arg_port.As<Napi::Number>().Uint32Value() : 7447;
+    uint32_t network_mtu = arg_mtu.IsNumber() ? arg_mtu.As<Napi::Number>().Uint32Value() : 1500;
 
     // Multicast Group
-    if (info[1].IsString()) {
-        group = info[1].As<Napi::String>().Utf8Value();
+    if (arg_group.IsString()) {
+        group = arg_group.As<Napi::String>().Utf8Value();
     }
     else {
-        Napi::Error::New(env, "Multicast group must be a string").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Invalid `group` option for reset(): multicast group must be a string").ThrowAsJavaScriptException();
         return;
     }
 
     // Name Group
-    if (info[0].IsString()) {
-        name = info[0].As<Napi::String>().Utf8Value();
+    if (arg_name.IsString()) {
+        name = arg_name.As<Napi::String>().Utf8Value();
     }
     else {
-        Napi::Error::New(env, "Name must be a string").ThrowAsJavaScriptException();
+        Napi::Error::New(env, "Invalid `name` option for reset(): name must be a string").ThrowAsJavaScriptException();
         return;
     }
 
@@ -280,6 +287,7 @@ void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
         // OnError() are called and return)
         auto asyncWorker = new NetworkListener(env, this);
 
+        // Queue the worker
         asyncWorker->Queue();
     }
     catch (const std::exception& ex) {
@@ -312,6 +320,7 @@ void NetworkBinding::Shutdown(const Napi::CallbackInfo& info) {
 }
 
 void NetworkBinding::Destroy(const Napi::CallbackInfo& info) {
+    // Set destroyed, to exit the read loop in the network listener
     this->destroyed = true;
 
     // Replace the ThreadSafeCallback instances to clean up the extra threads they created
@@ -322,8 +331,6 @@ void NetworkBinding::Destroy(const Napi::CallbackInfo& info) {
 }
 
 void NetworkBinding::Init(Napi::Env env, Napi::Object exports) {
-    // Napi::HandleScope scope(env);
-
     Napi::Function func =
       DefineClass(env,
                   "NetworkBinding",
@@ -355,25 +362,5 @@ void NetworkBinding::Init(Napi::Env env, Napi::Object exports) {
     // possible to supply a custom deleter.
     env.SetInstanceData<Napi::FunctionReference>(constructor);
 }
-
-/*
-void NetworkBinding::New(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    // Invoked as constructor: `new MyObject(...)`
-    if (info.IsConstructCall()) {
-        NetworkBinding* obj = new NetworkBinding();
-        obj->Wrap(info.This());
-        return info.This();
-    }
-    // Invoked as function: `MyObject(...)` convert to construct call
-    else {
-        Napi::Function cons = Napi::Function::New(env, constructor);
-        return Napi::NewInstance(cons, 0, nullptr);
-    }
-}
-
-Napi::FunctionReference NetworkBinding::constructor;
-*/
 
 }  // namespace NUClear
