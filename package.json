@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "node-gyp build",
-    "test": "node tests/test_new.js"
+    "test": "node tests/test.js"
   },
   "repository": {
     "type": "git",
@@ -28,7 +28,6 @@
   "homepage": "https://github.com/Fastcode/NUClearNet.js#readme",
   "gypfile": true,
   "devDependencies": {
-    "segfault-handler": "^1.0.0",
     "uvu": "^0.5.2"
   },
   "dependencies": {
