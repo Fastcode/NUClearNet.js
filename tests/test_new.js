@@ -42,29 +42,57 @@ function asyncTest(testFn, { timeout = 1000 } = {}) {
   });
 }
 
-test('NUClearNet: throws if used after destroy()', () => {
+test('NUClearNet instance throws if used after destroy()', () => {
   const net = new NUClearNet();
   net.destroy();
 
-  assert.throws(() => {
-    net.hash('nuclearnet');
-  }, /This network instance has been destroyed/);
+  assert.throws(
+    () => {
+      net.on('some-event', () => {});
+    },
+    /This network instance has been destroyed/,
+    'NUClearNet.on() throws if called after instance is destroyed'
+  );
 
-  assert.throws(() => {
-    net.on('some_event', () => {});
-  }, /This network instance has been destroyed/);
+  assert.throws(
+    () => {
+      net.addListener('some-event', () => {});
+    },
+    /This network instance has been destroyed/,
+    'NUClearNet.addListener() throws if called after instance is destroyed'
+  );
 
-  assert.throws(() => {
-    net.addListener('some_event', () => {});
-  }, /This network instance has been destroyed/);
+  assert.throws(
+    () => {
+      net.hash('nuclearnet');
+    },
+    /This network instance has been destroyed/,
+    'NUClearNet.hash() throws if called after instance is destroyed'
+  );
 
-  assert.throws(() => {
-    net.connect('some_event', () => {});
-  }, /This network instance has been destroyed/);
+  assert.throws(
+    () => {
+      net.connect({});
+    },
+    /This network instance has been destroyed/,
+    'NUClearNet.connect() throws if called after instance is destroyed'
+  );
 
-  assert.throws(() => {
-    net.disconnect('some_event', () => {});
-  }, /This network instance has been destroyed/);
+  assert.throws(
+    () => {
+      net.disconnect();
+    },
+    /This network instance has been destroyed/,
+    'NUClearNet.disconnect() throws if called after instance is destroyed'
+  );
+
+  assert.throws(
+    () => {
+      net.send({});
+    },
+    /This network instance has been destroyed/,
+    'NUClearNet.send() throws if called after instance is destroyed'
+  );
 });
 
 test('NUClearNet.hash()', () => {
@@ -73,12 +101,12 @@ test('NUClearNet.hash()', () => {
   const expected = Buffer.from('71226911ef5289e4', 'hex');
   const hash = net.hash('nuclearnet');
 
-  assert.equal(hash, expected);
+  assert.equal(hash, expected, 'Hash of "nuclearnet" matches known hash');
 
   net.destroy();
 });
 
-test('NUClearNet.send() throws if not connected', () => {
+test('NUClearNet.send() throws if used before connect()', () => {
   const net = new NUClearNet();
 
   assert.throws(() => {
@@ -89,6 +117,11 @@ test('NUClearNet.send() throws if not connected', () => {
 });
 
 test('NUClearNet emits join events', async () => {
+  // Test set up:
+  //   - Create two network instances (A and B) and connect them
+  //   - Wait for A to join B (and vice versa) by listening for the `nuclear_join` event on both instances
+  //   - End successfully if A joined B, and B joined A
+  //   - Automatically end with failure if at least one didn't join the other before the timeout
   await asyncTest(
     (done) => {
       const netA = new NUClearNet();
@@ -124,11 +157,11 @@ test('NUClearNet emits join events', async () => {
       });
 
       netA.connect({
-        name: 'netA_' + uniqueId(),
+        name: 'netA-' + uniqueId(),
       });
 
       netB.connect({
-        name: 'netB_' + uniqueId(),
+        name: 'netB-' + uniqueId(),
       });
 
       return cleanUp;
@@ -138,6 +171,11 @@ test('NUClearNet emits join events', async () => {
 });
 
 test('NUClearNet emits leave events', async () => {
+  // Test set up:
+  //   - Create two network instances (A and B) and connect them
+  //   - Wait for B to join A, then disconnect B to trigger the `nuclear_leave` event on A
+  //   - End successfully if B triggered the leave event after joining and disconnecting from A
+  //   - Automatically end with failure if the above didn't happen before the timeout
   await asyncTest(
     (done) => {
       const netA = new NUClearNet();
@@ -156,18 +194,18 @@ test('NUClearNet emits leave events', async () => {
       });
 
       netA.on('nuclear_join', (peer) => {
-        // Disconnect B after it joins, to trigger the leave
+        // Disconnect B after it joins, to trigger the leave event on A
         if (peer.name === netB.options.name) {
           netB.disconnect();
         }
       });
 
       netA.connect({
-        name: 'netA_' + uniqueId(),
+        name: 'netA-' + uniqueId(),
       });
 
       netB.connect({
-        name: 'netB_' + uniqueId(),
+        name: 'netB-' + uniqueId(),
       });
 
       return cleanUp;
@@ -177,6 +215,13 @@ test('NUClearNet emits leave events', async () => {
 });
 
 test('NUClearNet can send and receive reliable targeted messages', async () => {
+  // Test set up:
+  //   - Create three network instances (A, B, C) and connect them
+  //   - Wait for B join A, then send B a specific payload with `reliable` set
+  //   - Do the above for C as well, with its own specific payload
+  //   - End successfully if both B and C got their respective payloads from A
+  //   - End with failure if B or C got a payload from A that was not their own (this verifies targeting works)
+  //   - Automatically end with failure if all of the above didn't happen before the timeout
   await asyncTest(
     (done, fail) => {
       const netA = new NUClearNet();
@@ -232,7 +277,7 @@ test('NUClearNet can send and receive reliable targeted messages', async () => {
           } else {
             cleanUp();
             fail(
-              'netB received unexpected data' +
+              'netB received unexpected data from netA' +
                 '\n  expected: ' +
                 payloadToB.toString('utf-8') +
                 '\n    actual: ' +
@@ -250,7 +295,7 @@ test('NUClearNet can send and receive reliable targeted messages', async () => {
           } else {
             cleanUp();
             fail(
-              'netC received unexpected data' +
+              'netC received unexpected data from netA' +
                 '\n  expected: ' +
                 payloadToC.toString('utf-8') +
                 '\n    actual: ' +
@@ -261,15 +306,15 @@ test('NUClearNet can send and receive reliable targeted messages', async () => {
       });
 
       netA.connect({
-        name: 'netA_' + uniqueId(),
+        name: 'netA-' + uniqueId(),
       });
 
       netB.connect({
-        name: 'netB_' + uniqueId(),
+        name: 'netB-' + uniqueId(),
       });
 
       netC.connect({
-        name: 'netC_' + uniqueId(),
+        name: 'netC-' + uniqueId(),
       });
 
       return cleanUp;
@@ -279,6 +324,14 @@ test('NUClearNet can send and receive reliable targeted messages', async () => {
 });
 
 test('NUClearNet can send and receive unreliable targeted messages', async () => {
+  // Test set up:
+  //   - Create three network instances (A, B, C) and connect them
+  //   - Wait for B to join A, then start an interval to unreliably send B a specific payload
+  //     The interval ensures multiple messages will be sent, to compensate for any that are dropped due to the unreliable send.
+  //   - Do the above for C as well, with its own specific payload
+  //   - End successfully if both B and C got their respective payloads from A
+  //   - End with failure if B or C got a payload from A that was not their own (this verifies targeting works)
+  //   - Automatically end with failure if all of the above didn't happen before the timeout
   await asyncTest(
     (done, fail) => {
       const netA = new NUClearNet();
@@ -353,7 +406,7 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
           } else {
             cleanUp();
             fail(
-              'netB received unexpected data' +
+              'netB received unexpected data from netA' +
                 '\n  expected: ' +
                 payloadToB.toString('utf-8') +
                 '\n    actual: ' +
@@ -371,7 +424,7 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
           } else {
             cleanUp();
             fail(
-              'netC received unexpected data' +
+              'netC received unexpected data from netA' +
                 '\n  expected: ' +
                 payloadToC.toString('utf-8') +
                 '\n    actual: ' +
@@ -382,15 +435,15 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
       });
 
       netA.connect({
-        name: 'netA_' + uniqueId(),
+        name: 'netA-' + uniqueId(),
       });
 
       netB.connect({
-        name: 'netB_' + uniqueId(),
+        name: 'netB-' + uniqueId(),
       });
 
       netC.connect({
-        name: 'netC_' + uniqueId(),
+        name: 'netC-' + uniqueId(),
       });
 
       return cleanUp;
@@ -400,6 +453,12 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
 });
 
 test('NUClearNet can send and receive reliable untargeted messages', async () => {
+  // Test set up:
+  //   - Create three network instances (A, B, C) and connect them
+  //   - Wait for both B and C to join A, then send the payload with `reliable` set, untargeted
+  //   - End successfully if both B and C got the payload from A
+  //   - End with failure if B or C got a payload from A that was not the expected payload
+  //   - Automatically end with failure if all of the above didn't happen before the timeout
   await asyncTest(
     (done, fail) => {
       const netA = new NUClearNet();
@@ -457,7 +516,7 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
           } else {
             cleanUp();
             fail(
-              'netB received unexpected data' +
+              'netB received unexpected data from netA' +
                 '\n  expected: ' +
                 payload.toString('utf-8') +
                 '\n    actual: ' +
@@ -475,7 +534,7 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
           } else {
             cleanUp();
             fail(
-              'netC received unexpected data' +
+              'netC received unexpected data from netA' +
                 '\n  expected: ' +
                 payload.toString('utf-8') +
                 '\n    actual: ' +
@@ -486,15 +545,15 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
       });
 
       netA.connect({
-        name: 'netA_' + uniqueId(),
+        name: 'netA-' + uniqueId(),
       });
 
       netB.connect({
-        name: 'netB_' + uniqueId(),
+        name: 'netB-' + uniqueId(),
       });
 
       netC.connect({
-        name: 'netC_' + uniqueId(),
+        name: 'netC-' + uniqueId(),
       });
 
       return cleanUp;
@@ -504,6 +563,13 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
 });
 
 test('NUClearNet can send and receive unreliable untargeted messages', async () => {
+  // Test set up:
+  //   - Create three network instances (A, B, C) and connect them
+  //   - Wait for both B and C to join A, then start an interval to unreliably send the same payload, without a target.
+  //     The interval ensures multiple messages will be sent, to compensate for any that are dropped due to the unreliable send.
+  //   - End successfully if both B and C got the payload from A
+  //   - End with failure if B or C got a payload from A that was not the expected payload
+  //   - Automatically end with failure if all of the above didn't happen before the timeout
   await asyncTest(
     (done, fail) => {
       const netA = new NUClearNet();
@@ -529,7 +595,7 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
       let cConnected = false;
 
       function checkConnected() {
-        // Start sending unreliable messages after both peers (B and C) are connected
+        // Start sending unreliable messages after both peers are connected
         if (bConnected && cConnected) {
           sendInterval && clearInterval(sendInterval);
           sendInterval = setInterval(() => {
@@ -572,7 +638,7 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
           } else {
             cleanUp();
             fail(
-              'netB received unexpected data' +
+              'netB received unexpected data from netA' +
                 '\n  expected: ' +
                 payload.toString('utf-8') +
                 '\n    actual: ' +
@@ -590,7 +656,7 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
           } else {
             cleanUp();
             fail(
-              'netC received unexpected data' +
+              'netC received unexpected data from netA' +
                 '\n  expected: ' +
                 payload.toString('utf-8') +
                 '\n    actual: ' +
@@ -601,15 +667,15 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
       });
 
       netA.connect({
-        name: 'netA_' + uniqueId(),
+        name: 'netA-' + uniqueId(),
       });
 
       netB.connect({
-        name: 'netB_' + uniqueId(),
+        name: 'netB-' + uniqueId(),
       });
 
       netC.connect({
-        name: 'netC_' + uniqueId(),
+        name: 'netC-' + uniqueId(),
       });
 
       return cleanUp;
