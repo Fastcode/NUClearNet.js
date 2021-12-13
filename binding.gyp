@@ -78,6 +78,11 @@
                             'OTHER_LDFLAGS': ['-stdlib=libc++']
                         }
                     }
+                ],
+                [
+                    'OS=="win"', {
+                        'defines': [ '_HAS_EXCEPTIONS=1' ]
+                    }
                 ]
             ]
         }
