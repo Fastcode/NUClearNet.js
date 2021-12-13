@@ -17,6 +17,11 @@
                 "<!@(node -p \"require('napi-thread-safe-callback').include\")",
                 'src/nuclear/src/include'
             ],
+            "defines": [
+                # Restrict NAPI to v6 (to support Node v10)
+                # Changing this should have a corresponding change to "engines" in package.json
+                "NAPI_VERSION=6"
+            ],
             'msvs_settings': {
                 'VCCLCompilerTool': {
                     'ExceptionHandling': 1

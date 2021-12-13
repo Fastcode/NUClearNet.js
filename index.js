@@ -175,7 +175,7 @@ class NUClearNet extends EventEmitter {
     if (!this._active) {
       throw new Error('The network is not currently connected');
     } else {
-      this._net.send(options.type, options.payload, options.target, options.reliable ?? false);
+      this._net.send(options.type, options.payload, options.target, options.reliable !== undefined ? options.reliable : false);
     }
   }
 

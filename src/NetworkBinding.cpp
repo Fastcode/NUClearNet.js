@@ -84,7 +84,7 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     if (payload_arg.IsTypedArray()) {
         Napi::TypedArray typed_array = payload_arg.As<Napi::TypedArray>();
         Napi::ArrayBuffer buffer = typed_array.ArrayBuffer();
-        
+
         char* data = reinterpret_cast<char*>(buffer.Data());
         char* start = data + typed_array.ByteOffset();
         char* end = start + typed_array.ByteLength();
@@ -105,7 +105,7 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     else {
         Napi::TypedArray typed_array = hash_arg.As<Napi::TypedArray>();
         Napi::ArrayBuffer buffer = typed_array.ArrayBuffer();
-        
+
         uint8_t* data = reinterpret_cast<uint8_t*>(buffer.Data());
         uint8_t* start = data + typed_array.ByteOffset();
         uint8_t* end = start + typed_array.ByteLength();
@@ -279,7 +279,7 @@ void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
         // destruct itself when done (i.e. when Execute() returns and OnOK() or
         // OnError() are called and return)
         auto asyncWorker = new NetworkListener(env, this);
-        
+
         asyncWorker->Queue();
     }
     catch (const std::exception& ex) {
@@ -331,7 +331,7 @@ void NetworkBinding::Init(Napi::Env env, Napi::Object exports) {
                    InstanceMethod<&NetworkBinding::Process>("process", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
                    InstanceMethod<&NetworkBinding::Shutdown>("shutdown", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
                    InstanceMethod<&NetworkBinding::Hash>("hash", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
-                   InstanceMethod<&NetworkBinding::Destroy>("destroy", static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
+                   InstanceMethod<&NetworkBinding::Destroy>("destroy", static_cast<napi_property_attributes>(napi_writable | napi_configurable))});
 
     Napi::FunctionReference* constructor = new Napi::FunctionReference();
 
