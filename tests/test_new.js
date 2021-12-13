@@ -378,4 +378,121 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
   );
 });
 
+test.only('NUClearNet can send and receive unreliable targeted messages', async () => {
+  await asyncTest(
+    (done, fail) => {
+      const netA = new NUClearNet();
+      const netB = new NUClearNet();
+      const netC = new NUClearNet();
+
+      let bSendInterval;
+      let cSendInterval;
+
+      function cleanUp() {
+        if (bSendInterval) {
+          clearInterval(bSendInterval);
+          bSendInterval = undefined;
+        }
+
+        if (cSendInterval) {
+          clearInterval(cSendInterval);
+          cSendInterval = undefined;
+        }
+
+        netA.destroy();
+        netB.destroy();
+        netC.destroy();
+      }
+
+      const payloadToB = Buffer.from('oh hai b!');
+      const payloadToC = Buffer.from('oh hai c!');
+
+      netA.on('nuclear_join', (peer) => {
+        // Start sending unreliable messages to B after it joins
+        if (peer.name === netB.options.name) {
+          bSendInterval = setInterval(() => {
+            netA.send({
+              target: netB.options.name,
+              reliable: false,
+              type: 'message-from-a',
+              payload: payloadToB,
+            });
+          }, 50);
+        }
+
+        // Start sending unreliable messages to C after it joins
+        if (peer.name === netC.options.name) {
+          cSendInterval = setInterval(() => {
+            netA.send({
+              target: netC.options.name,
+              reliable: false,
+              type: 'message-from-a',
+              payload: payloadToC,
+            });
+          }, 50);
+        }
+      });
+
+      let bGotMessage = false;
+      let cGotMessage = false;
+
+      function checkComplete() {
+        if (bGotMessage && cGotMessage) {
+          cleanUp();
+          done();
+        }
+      }
+
+      netB.on('message-from-a', (packet) => {
+        if (packet.peer.name === netA.options.name)
+          if (packet.payload.compare(payloadToB) === 0) {
+            bGotMessage = true;
+            checkComplete();
+          } else {
+            cleanUp();
+            fail(
+              'netB received unexpected data' +
+                '\n  expected: ' +
+                payloadToB.toString('utf-8') +
+                '\n    actual: ' +
+                packet.payload.toString('utf-8')
+            );
+          }
+      });
+
+      netC.on('message-from-a', (packet) => {
+        if (packet.peer.name === netA.options.name)
+          if (packet.payload.compare(payloadToC) === 0) {
+            cGotMessage = true;
+            checkComplete();
+          } else {
+            cleanUp();
+            fail(
+              'netC received unexpected data' +
+                '\n  expected: ' +
+                payloadToC.toString('utf-8') +
+                '\n    actual: ' +
+                packet.payload.toString('utf8')
+            );
+          }
+      });
+
+      netA.connect({
+        name: 'netA_' + uniqueId(),
+      });
+
+      netB.connect({
+        name: 'netB_' + uniqueId(),
+      });
+
+      netC.connect({
+        name: 'netC_' + uniqueId(),
+      });
+
+      return cleanUp;
+    },
+    { timeout: 1000 }
+  );
+});
+
 test.run();
