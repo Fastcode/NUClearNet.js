@@ -78,8 +78,6 @@ class NUClearNet extends EventEmitter {
   _onPacket(name, address, port, reliable, hash, payload) {
     const eventName = this._callbackMap[hash];
 
-    console.log('got packet', { eventName, payload, length: payload.length })
-
     // Construct our packet
     const packet = {
       peer: {
