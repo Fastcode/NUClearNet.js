@@ -308,6 +308,7 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
       netA.on('nuclear_join', (peer) => {
         // Start sending unreliable messages to B after it joins
         if (peer.name === netB.options.name) {
+          bSendInterval && clearInterval(bSendInterval)
           bSendInterval = setInterval(() => {
             netA.send({
               target: netB.options.name,
@@ -320,6 +321,7 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
 
         // Start sending unreliable messages to C after it joins
         if (peer.name === netC.options.name) {
+          cSendInterval && clearInterval(cSendInterval);
           cSendInterval = setInterval(() => {
             netA.send({
               target: netC.options.name,
