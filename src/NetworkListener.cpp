@@ -44,11 +44,13 @@ NetworkListener::NetworkListener(Napi::Env& env, NetworkBinding* binding)
 }
 
 NetworkListener::~NetworkListener() {
+#ifdef _WIN32
     WSACloseEvent(this->notifier); // TODO: Check return status?
 
     for (auto& event : this->events) {
         WSACloseEvent(event); // TODO: Check return status?
     }
+#endif
 }
 
 void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionProgress& p) {
