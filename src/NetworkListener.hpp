@@ -26,6 +26,7 @@ namespace NUClear {
 class NetworkListener : public Napi::AsyncProgressWorker<char> {
 public:
     NetworkListener(Napi::Env& env, NetworkBinding* binding);
+    ~NetworkListener();
     void Execute(const Napi::AsyncProgressWorker<char>::ExecutionProgress& p) override;
     void OnProgress(const char* data, size_t count) override;
     void OnOK() override;
@@ -36,6 +37,7 @@ public:
 #ifdef _WIN32
     std::vector<WSAEVENT> events;
     std::vector<SOCKET> fds;
+    WSAEVENT notifier;
 #else
     std::vector<pollfd> fds;
 #endif  // _WIN32

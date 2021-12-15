@@ -20,23 +20,35 @@
 namespace NUClear {
 NetworkListener::NetworkListener(Napi::Env& env, NetworkBinding* binding)
 : Napi::AsyncProgressWorker<char>(env), binding(binding) {
-    std::vector<NUClear::fd_t> notifyfds = binding->net.listen_fds();
+    std::vector<NUClear::fd_t> notifyfds = this->binding->net.listen_fds();
 
 #ifdef _WIN32
-    // Make event and link it up
+    // Make an event for each file descriptor and link them up
     for (auto& fd : notifyfds) {
-        auto event = WSACreateEvent();
-        WSAEventSelect(fd, event, FD_READ | FD_CLOSE);
+        auto event = WSACreateEvent(); // TODO: Check return status
+        WSAEventSelect(fd, event, FD_READ | FD_CLOSE); // TODO: Check return status
 
-        fds.push_back(fd);
-        events.push_back(event);
+        this->fds.push_back(fd);
+        this->events.push_back(event);
     }
+
+    // Create an event to use for the notifier (used for getting out of WSAWaitForMultipleEvents())
+    this->notifier = WSACreateEvent(); // TODO: Check return status
+    this->events.push_back(notifier);
 #else
     // Make event
     for (auto& fd : notifyfds) {
-        fds.push_back(pollfd{fd, POLLIN, 0});
+        this->fds.push_back(pollfd{fd, POLLIN, 0});
     }
 #endif  // _WIN32
+}
+
+NetworkListener::~NetworkListener() {
+    WSACloseEvent(this->notifier); // TODO: Check return status?
+
+    for (auto& event : this->events) {
+        WSACloseEvent(event); // TODO: Check return status?
+    }
 }
 
 void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionProgress& p) {
@@ -46,28 +58,33 @@ void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionPr
 
 #ifdef _WIN32
         // Wait for events and check for shutdown
-        auto event = WSAWaitForMultipleEvents(events.size(), events.data(), false, WSA_INFINITE, false);
+        auto eventIndex = WSAWaitForMultipleEvents(this->events.size(), this->events.data(), false, WSA_INFINITE, false);
 
-        if (event >= WSA_WAIT_EVENT_0 && event < WSA_WAIT_EVENT_0 + events.size()) {
-            auto& e  = events[event - WSA_WAIT_EVENT_0];
-            auto& fd = fds[event - WSA_WAIT_EVENT_0];
+        if (eventIndex >= WSA_WAIT_EVENT_0 && eventIndex < WSA_WAIT_EVENT_0 + this->events.size()) {
+            auto& event  = this->events[eventIndex - WSA_WAIT_EVENT_0];
 
-            WSANETWORKEVENTS wsne;
-            WSAEnumNetworkEvents(fd, e, &wsne);
+            if (event == this->notifier) {
+                WSAResetEvent(event); // TODO: Check return status
+            } else {
+                auto& fd = this->fds[eventIndex - WSA_WAIT_EVENT_0];
 
-            if ((wsne.lNetworkEvents & FD_CLOSE) != 0) {
-                run = false;
-            }
-            else if ((wsne.lNetworkEvents & FD_READ) != 0) {
-                data = true;
+                WSANETWORKEVENTS wsne;
+                WSAEnumNetworkEvents(fd, event, &wsne); // TODO: Check return status
+
+                if ((wsne.lNetworkEvents & FD_CLOSE) != 0) {
+                    run = false;
+                }
+                else if ((wsne.lNetworkEvents & FD_READ) != 0) {
+                    data = true;
+                }
             }
         }
 #else
         // Wait for events and check for shutdown
-        poll(fds.data(), static_cast<nfds_t>(fds.size()), 500);
+        poll(this->fds.data(), static_cast<nfds_t>(this->fds.size()), 500);
 
         // Check if the connections closed
-        for (const auto& fd : fds) {
+        for (const auto& fd : this->fds) {
             if ((fd.revents & POLLNVAL) != 0) {
                 run = false;
             }

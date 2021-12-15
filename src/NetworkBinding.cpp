@@ -287,6 +287,11 @@ void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
         // OnError() are called and return)
         auto asyncWorker = new NetworkListener(env, this);
 
+#ifdef _WIN32
+        // Keep track of the NetworkListener notifier, so we can signal it to exit WSAWaitForMultipleEvents()
+        this->listenerNotifier = asyncWorker->notifier;
+#endif
+
         // Queue the worker
         asyncWorker->Queue();
     }
@@ -322,6 +327,11 @@ void NetworkBinding::Shutdown(const Napi::CallbackInfo& info) {
 void NetworkBinding::Destroy(const Napi::CallbackInfo& info) {
     // Set destroyed, to exit the read loop in the network listener
     this->destroyed = true;
+
+#ifdef _WIN32
+    // Signal the network listener notifier, to exit WSAWaitForMultipleEvents()
+    WSASetEvent(this->listenerNotifier);
+#endif
 
     // Replace the ThreadSafeCallback instances to clean up the extra threads they created
     this->net.set_packet_callback([](const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, const bool& reliable, std::vector<char>&& payload) {});

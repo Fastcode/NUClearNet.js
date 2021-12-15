@@ -39,6 +39,10 @@ public:
     extension::network::NUClearNetwork net;
     bool destroyed = false;
 
+#ifdef _WIN32
+    WSAEVENT listenerNotifier;
+#endif
+
     static void Init(Napi::Env env, Napi::Object exports);
 };
 
