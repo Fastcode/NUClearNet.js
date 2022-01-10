@@ -4,7 +4,22 @@ const assert = require('uvu/assert');
 const { NUClearNet } = require('..');
 
 function randomId() {
-  return String(Math.random() * 100000000).slice(0, 8);
+  return String(Math.random() * 100000000).slice(0, 7);
+}
+
+function createPeers(count, setupState = (peer) => peer) {
+  const peers = [];
+
+  for (let i = 0; i < count; i++) {
+    peers.push({
+      name: `net-${i}-${randomId()}`,
+      net: new NUClearNet(),
+    });
+  }
+
+  return peers.map((peer) => {
+    return setupState(peer, peers);
+  });
 }
 
 function asyncTest(testFn, { timeout = 1000 } = {}) {
@@ -51,7 +66,7 @@ test('NUClearNet instance throws if used after destroy()', () => {
       net.on('some-event', () => {});
     },
     /This network instance has been destroyed/,
-    'NUClearNet.on() throws if called after instance is destroyed'
+    'NUClearNet.on() throws if called after instance is destroyed',
   );
 
   assert.throws(
@@ -59,7 +74,7 @@ test('NUClearNet instance throws if used after destroy()', () => {
       net.addListener('some-event', () => {});
     },
     /This network instance has been destroyed/,
-    'NUClearNet.addListener() throws if called after instance is destroyed'
+    'NUClearNet.addListener() throws if called after instance is destroyed',
   );
 
   assert.throws(
@@ -67,7 +82,7 @@ test('NUClearNet instance throws if used after destroy()', () => {
       net.hash('nuclearnet');
     },
     /This network instance has been destroyed/,
-    'NUClearNet.hash() throws if called after instance is destroyed'
+    'NUClearNet.hash() throws if called after instance is destroyed',
   );
 
   assert.throws(
@@ -75,7 +90,7 @@ test('NUClearNet instance throws if used after destroy()', () => {
       net.connect({});
     },
     /This network instance has been destroyed/,
-    'NUClearNet.connect() throws if called after instance is destroyed'
+    'NUClearNet.connect() throws if called after instance is destroyed',
   );
 
   assert.throws(
@@ -83,7 +98,7 @@ test('NUClearNet instance throws if used after destroy()', () => {
       net.disconnect();
     },
     /This network instance has been destroyed/,
-    'NUClearNet.disconnect() throws if called after instance is destroyed'
+    'NUClearNet.disconnect() throws if called after instance is destroyed',
   );
 
   assert.throws(
@@ -91,7 +106,7 @@ test('NUClearNet instance throws if used after destroy()', () => {
       net.send({});
     },
     /This network instance has been destroyed/,
-    'NUClearNet.send() throws if called after instance is destroyed'
+    'NUClearNet.send() throws if called after instance is destroyed',
   );
 });
 
@@ -118,55 +133,49 @@ test('NUClearNet.send() throws if used before connect()', () => {
 
 test('NUClearNet emits join events', async () => {
   // Test set up:
-  //   - Create two network instances (A and B) and connect them
-  //   - Wait for A to join B (and vice versa) by listening for the `nuclear_join` event on both instances
-  //   - End successfully if A joined B, and B joined A
-  //   - Automatically end with failure if at least one didn't join the other before the timeout
+  //   - Create N network instances and connect all of them
+  //   - Each time one peer joins another, check that they've all joined each other
+  //   - If so, end successfully
+  //   - Otherwise end with failure when the timeout expires
   await asyncTest(
     (done) => {
-      const netA = new NUClearNet();
-      const netB = new NUClearNet();
+      const peers = createPeers(5, (self, peers) => {
+        return {
+          ...self, // name and net instance
+          joinedBy: Object.fromEntries(peers.map((peer) => [peer.name, peer.name === self.name])), // { [peerName]: peerJoined }
+        };
+      });
 
       function cleanUp() {
-        netA.destroy();
-        netB.destroy();
+        peers.forEach((peer) => peer.net.destroy());
       }
 
-      let aJoinedB = false;
-      let bJoinedA = false;
-
       function checkComplete() {
-        if (aJoinedB && bJoinedA) {
+        const isComplete = peers.every((peer) => {
+          // Check that every other peer joined this peer
+          return Object.values(peer.joinedBy).every((otherPeerJoined) => otherPeerJoined);
+        });
+
+        if (isComplete) {
           cleanUp();
           done();
         }
       }
 
-      netA.on('nuclear_join', (peer) => {
-        if (peer.name === netB.options.name) {
-          bJoinedA = true;
+      // Set up the join event listeners
+      for (const peer of peers) {
+        peer.net.on('nuclear_join', (otherPeer) => {
+          peer.joinedBy[otherPeer.name] = true;
           checkComplete();
-        }
-      });
+        });
+      }
 
-      netB.on('nuclear_join', (peer) => {
-        if (peer.name === netA.options.name) {
-          aJoinedB = true;
-          checkComplete();
-        }
-      });
-
-      netA.connect({
-        name: 'netA-' + randomId(),
-      });
-
-      netB.connect({
-        name: 'netB-' + randomId(),
-      });
+      // Connect the peers
+      peers.forEach((peer) => peer.net.connect({ name: peer.name }));
 
       return cleanUp;
     },
-    { timeout: 1000 }
+    { timeout: 1000 },
   );
 });
 
@@ -178,307 +187,230 @@ test('NUClearNet emits leave events', async () => {
   //   - Automatically end with failure if the above didn't happen before the timeout
   await asyncTest(
     (done) => {
-      const netA = new NUClearNet();
-      const netB = new NUClearNet();
+      const [peerA, peerB] = createPeers(2);
 
       function cleanUp() {
-        netA.destroy();
-        netB.destroy();
+        [peerA, peerB].forEach((peer) => peer.net.destroy());
       }
 
-      netA.on('nuclear_leave', (peer) => {
-        if (peer.name === netB.options.name) {
+      peerA.net.on('nuclear_leave', (peer) => {
+        // End the test when B disconnects from A
+        if (peer.name === peerB.net.options.name) {
           cleanUp();
           done();
         }
       });
 
-      netA.on('nuclear_join', (peer) => {
+      peerA.net.on('nuclear_join', (peer) => {
         // Disconnect B after it joins, to trigger the leave event on A
-        if (peer.name === netB.options.name) {
-          netB.disconnect();
+        if (peer.name === peerB.net.options.name) {
+          peerB.net.disconnect();
         }
       });
 
-      netA.connect({
-        name: 'netA-' + randomId(),
-      });
-
-      netB.connect({
-        name: 'netB-' + randomId(),
-      });
+      // Connect the peers
+      [peerA, peerB].forEach((peer) => peer.net.connect({ name: peer.name }));
 
       return cleanUp;
     },
-    { timeout: 1000 }
+    { timeout: 1000 },
   );
 });
 
 test('NUClearNet can send and receive reliable targeted messages', async () => {
   // Test set up:
-  //   - Create three network instances (A, B, C) and connect them
-  //   - Wait for B join A, then send B a specific payload with `reliable` set
-  //   - Do the above for C as well, with its own specific payload
-  //   - End successfully if both B and C got their respective payloads from A
-  //   - End with failure if B or C got a payload from A that was not their own (this verifies targeting works)
-  //   - Automatically end with failure if all of the above didn't happen before the timeout
+  //   - Create one sender and N-1 receiver network instances and connect them
+  //   - Wait for receivers to join the sender, and send each receiver a unique payload
+  //   - End successfully when all receivers get their respective payloads from the sender
+  //   - End with failure if a receiver gets a payload that is not their own (this verifies targeting works)
+  //   - Automatically end with failure if all of the above doesn't happen before the timeout
   await asyncTest(
     (done, fail) => {
-      const netA = new NUClearNet();
-      const netB = new NUClearNet();
-      const netC = new NUClearNet();
-
-      function cleanUp() {
-        netA.destroy();
-        netB.destroy();
-        netC.destroy();
-      }
-
-      const payloadToB = Buffer.from('oh hai b!');
-      const payloadToC = Buffer.from('oh hai c!');
-
-      netA.on('nuclear_join', (peer) => {
-        // Send message to B after it joins
-        if (peer.name === netB.options.name) {
-          netA.send({
-            target: netB.options.name,
-            reliable: true,
-            type: 'message-from-a',
-            payload: payloadToB,
-          });
-        }
-
-        // Send message to C after it joins
-        if (peer.name === netC.options.name) {
-          netA.send({
-            target: netC.options.name,
-            reliable: true,
-            type: 'message-from-a',
-            payload: payloadToC,
-          });
-        }
+      const [sender, ...receivers] = createPeers(4, (self) => {
+        return {
+          ...self, // name and net instance
+          gotExpectedMessage: false,
+        };
       });
 
-      let bGotMessage = false;
-      let cGotMessage = false;
+      function cleanUp() {
+        [sender, ...receivers].forEach((peer) => peer.net.destroy());
+      }
 
       function checkComplete() {
-        if (bGotMessage && cGotMessage) {
+        // Complete the test if every receiver got their expected message
+        if (receivers.every((receiver) => receiver.gotExpectedMessage)) {
           cleanUp();
           done();
         }
       }
 
-      netB.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name) {
-          if (packet.payload.compare(payloadToB) === 0) {
-            bGotMessage = true;
+      const receiverNames = receivers.map((peer) => peer.name);
+
+      // Set up the sender to send to receivers when they join
+      sender.net.on('nuclear_join', (peer) => {
+        // Send message to the peer if it's one of our receivers
+        if (receiverNames.includes(peer.name)) {
+          sender.net.send({
+            target: peer.name,
+            reliable: true,
+            type: 'message-from-a',
+            payload: Buffer.from('oh hai ' + peer.name),
+          });
+        }
+      });
+
+      // Set up a listener on each of the receivers
+      for (const receiver of receivers) {
+        const expectedPayload = Buffer.from('oh hai ' + receiver.name);
+
+        receiver.net.on('message-from-a', (packet) => {
+          // Ignore packets not from our sender
+          if (packet.peer.name !== sender.name) {
+            return;
+          }
+
+          // Ensure that the packet is what we expected to be sent to this receiver
+          if (packet.payload.compare(expectedPayload) === 0) {
+            receiver.gotExpectedMessage = true;
             checkComplete();
           } else {
             cleanUp();
             fail(
-              'netB received unexpected data from netA' +
+              `receiver ${receiver.name} got unexpected data from sender` +
                 '\n  expected: ' +
-                payloadToB.toString('utf-8') +
+                expectedPayload.toString('utf-8') +
                 '\n    actual: ' +
-                packet.payload.toString('utf-8')
+                packet.payload.toString('utf-8'),
             );
           }
-        }
-      });
+        });
+      }
 
-      netC.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name) {
-          if (packet.payload.compare(payloadToC) === 0) {
-            cGotMessage = true;
-            checkComplete();
-          } else {
-            cleanUp();
-            fail(
-              'netC received unexpected data from netA' +
-                '\n  expected: ' +
-                payloadToC.toString('utf-8') +
-                '\n    actual: ' +
-                packet.payload.toString('utf8')
-            );
-          }
-        }
-      });
-
-      netA.connect({
-        name: 'netA-' + randomId(),
-      });
-
-      netB.connect({
-        name: 'netB-' + randomId(),
-      });
-
-      netC.connect({
-        name: 'netC-' + randomId(),
-      });
+      // Connect the peers
+      [sender, ...receivers].forEach((peer) => peer.net.connect({ name: peer.name }));
 
       return cleanUp;
     },
-    { timeout: 1000 }
+    { timeout: 1000 },
   );
 });
 
 test('NUClearNet can send and receive unreliable targeted messages', async () => {
   // Test set up:
-  //   - Create three network instances (A, B, C) and connect them
-  //   - Wait for B to join A, then start an interval to unreliably send B a specific payload
+  //   - Create one sender and N-1 receiver network instances and connect them
+  //   - Wait for each receiver to join the sender, then start an interval to unreliably send the receiver a unique payload.
   //     The interval ensures multiple messages will be sent, to compensate for any that are dropped due to the unreliable send.
-  //   - Do the above for C as well, with its own specific payload
-  //   - End successfully if both B and C got their respective payloads from A
-  //   - End with failure if B or C got a payload from A that was not their own (this verifies targeting works)
-  //   - Automatically end with failure if all of the above didn't happen before the timeout
+  //   - End successfully when all receivers get their respective payloads from the sender
+  //   - End with failure if a receiver gets a payload that is not their own (this verifies targeting works)
+  //   - Automatically end with failure if all of the above doesn't happen before the timeout
   await asyncTest(
     (done, fail) => {
-      const netA = new NUClearNet();
-      const netB = new NUClearNet();
-      const netC = new NUClearNet();
-
-      let bSendInterval;
-      let cSendInterval;
-
-      function cleanUp() {
-        if (bSendInterval) {
-          clearInterval(bSendInterval);
-          bSendInterval = undefined;
-        }
-
-        if (cSendInterval) {
-          clearInterval(cSendInterval);
-          cSendInterval = undefined;
-        }
-
-        netA.destroy();
-        netB.destroy();
-        netC.destroy();
-      }
-
-      const payloadToB = Buffer.from('oh hai b!');
-      const payloadToC = Buffer.from('oh hai c!');
-
-      netA.on('nuclear_join', (peer) => {
-        // Start sending unreliable messages to B after it joins
-        if (peer.name === netB.options.name) {
-          bSendInterval && clearInterval(bSendInterval);
-          bSendInterval = setInterval(() => {
-            netA.send({
-              target: netB.options.name,
-              reliable: false,
-              type: 'message-from-a',
-              payload: payloadToB,
-            });
-          }, 50);
-        }
-
-        // Start sending unreliable messages to C after it joins
-        if (peer.name === netC.options.name) {
-          cSendInterval && clearInterval(cSendInterval);
-          cSendInterval = setInterval(() => {
-            netA.send({
-              target: netC.options.name,
-              reliable: false,
-              type: 'message-from-a',
-              payload: payloadToC,
-            });
-          }, 50);
-        }
+      const [sender, ...receivers] = createPeers(4, (self) => {
+        return {
+          ...self, // name and net instance
+          gotExpectedMessage: false,
+        };
       });
 
-      let bGotMessage = false;
-      let cGotMessage = false;
+      const sendIntervals = {};
+
+      function cleanUp() {
+        Object.values(sendIntervals).forEach((interval) => clearInterval(interval));
+        [sender, ...receivers].forEach((peer) => peer.net.destroy());
+      }
 
       function checkComplete() {
-        if (bGotMessage && cGotMessage) {
+        // Complete the test if every receiver got their expected message
+        if (receivers.every((receiver) => receiver.gotExpectedMessage)) {
           cleanUp();
           done();
         }
       }
 
-      netB.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name) {
-          if (packet.payload.compare(payloadToB) === 0) {
-            bGotMessage = true;
+      const receiverNames = receivers.map((peer) => peer.name);
+
+      // Set up the sender to send when receivers join
+      sender.net.on('nuclear_join', (peer) => {
+        // Start sending unreliable messages to the peer if it's one of our receivers
+        if (receiverNames.includes(peer.name)) {
+          const sendInterval = sendIntervals[peer.name];
+          sendInterval && clearInterval(sendInterval);
+
+          sendIntervals[peer.name] = setInterval(() => {
+            sender.net.send({
+              target: peer.name,
+              reliable: false,
+              type: 'message-from-a',
+              payload: Buffer.from('oh hai ' + peer.name),
+            });
+          }, 50);
+        }
+      });
+
+      // Set up a listener on each of the receivers
+      for (const receiver of receivers) {
+        const expectedPayload = Buffer.from('oh hai ' + receiver.name);
+
+        receiver.net.on('message-from-a', (packet) => {
+          // Ignore packets not from our sender
+          if (packet.peer.name !== sender.name) {
+            return;
+          }
+
+          // Ensure that the packet is what we expected to be sent to this receiver
+          if (packet.payload.compare(expectedPayload) === 0) {
+            receiver.gotExpectedMessage = true;
             checkComplete();
           } else {
             cleanUp();
             fail(
-              'netB received unexpected data from netA' +
+              `receiver ${receiver.name} got unexpected data from sender` +
                 '\n  expected: ' +
-                payloadToB.toString('utf-8') +
+                expectedPayload.toString('utf-8') +
                 '\n    actual: ' +
-                packet.payload.toString('utf-8')
+                packet.payload.toString('utf-8'),
             );
           }
-        }
-      });
+        });
+      }
 
-      netC.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name) {
-          if (packet.payload.compare(payloadToC) === 0) {
-            cGotMessage = true;
-            checkComplete();
-          } else {
-            cleanUp();
-            fail(
-              'netC received unexpected data from netA' +
-                '\n  expected: ' +
-                payloadToC.toString('utf-8') +
-                '\n    actual: ' +
-                packet.payload.toString('utf8')
-            );
-          }
-        }
-      });
-
-      netA.connect({
-        name: 'netA-' + randomId(),
-      });
-
-      netB.connect({
-        name: 'netB-' + randomId(),
-      });
-
-      netC.connect({
-        name: 'netC-' + randomId(),
-      });
+      // Connect the peers
+      [sender, ...receivers].forEach((peer) => peer.net.connect({ name: peer.name }));
 
       return cleanUp;
     },
-    { timeout: 1000 }
+    { timeout: 1000 },
   );
 });
 
 test('NUClearNet can send and receive reliable untargeted messages', async () => {
   // Test set up:
-  //   - Create three network instances (A, B, C) and connect them
-  //   - Wait for both B and C to join A, then send the payload with `reliable` set, untargeted
-  //   - End successfully if both B and C got the payload from A
-  //   - End with failure if B or C got a payload from A that was not the expected payload
-  //   - Automatically end with failure if all of the above didn't happen before the timeout
+  //   - Create one sender and N-1 receiver network instances and connect them
+  //   - Wait for both all receivers to join the sender, then send the payload with `reliable` set, untargeted
+  //   - End successfully when all receivers get the payload from the sender
+  //   - End with failure if any receiver gets a payload from the sender that is not the expected payload
+  //   - Automatically end with failure if all of the above doesn't happen before the timeout
   await asyncTest(
     (done, fail) => {
-      const netA = new NUClearNet();
-      const netB = new NUClearNet();
-      const netC = new NUClearNet();
+      const [sender, ...receivers] = createPeers(4, (self, peers) => {
+        return {
+          ...self, // name and net instance
+          joinedBy: Object.fromEntries(peers.map((peer) => [peer.name, peer.name === self.name])), // { [peerName]: peerJoined }
+          gotExpectedMessage: false,
+        };
+      });
 
       function cleanUp() {
-        netA.destroy();
-        netB.destroy();
-        netC.destroy();
+        [sender, ...receivers].forEach((peer) => peer.net.destroy());
       }
 
       const payload = Buffer.from('oh hai guys!');
 
-      let bConnected = false;
-      let cConnected = false;
-
       function checkConnected() {
-        if (bConnected && cConnected) {
-          netA.send({
+        // Send the untargeted message when every receiver has joined the sender
+        if (receivers.every((r) => sender.joinedBy[r.name])) {
+          sender.net.send({
             reliable: true,
             type: 'message-from-a',
             payload,
@@ -486,120 +418,90 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
         }
       }
 
-      netA.on('nuclear_join', (peer) => {
-        if (peer.name === netB.options.name) {
-          bConnected = true;
-          checkConnected();
-        }
-
-        if (peer.name === netC.options.name) {
-          cConnected = true;
-          checkConnected();
-        }
-      });
-
-      let bGotMessage = false;
-      let cGotMessage = false;
-
       function checkComplete() {
-        if (bGotMessage && cGotMessage) {
+        // Complete the test if every receiver got their expected message
+        if (receivers.every((receiver) => receiver.gotExpectedMessage)) {
           cleanUp();
           done();
         }
       }
 
-      netB.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name) {
+      // Keep track of which receivers that are joining the sender
+      sender.net.on('nuclear_join', (peer) => {
+        const receiver = receivers.find((receiver) => receiver.name === peer.name);
+        if (receiver) {
+          sender.joinedBy[receiver.name] = true;
+          checkConnected();
+        }
+      });
+
+      // Set up a listener on each of the receivers
+      for (const receiver of receivers) {
+        receiver.net.on('message-from-a', (packet) => {
+          // Ignore packets not from our sender
+          if (packet.peer.name !== sender.name) {
+            return;
+          }
+
+          // Ensure that the packet is what we expected from the sender
           if (packet.payload.compare(payload) === 0) {
-            bGotMessage = true;
+            receiver.gotExpectedMessage = true;
             checkComplete();
           } else {
             cleanUp();
             fail(
-              'netB received unexpected data from netA' +
+              `receiver ${receiver.name} got unexpected data from sender` +
                 '\n  expected: ' +
                 payload.toString('utf-8') +
                 '\n    actual: ' +
-                packet.payload.toString('utf-8')
+                packet.payload.toString('utf-8'),
             );
           }
-        }
-      });
+        });
+      }
 
-      netC.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name) {
-          if (packet.payload.compare(payload) === 0) {
-            cGotMessage = true;
-            checkComplete();
-          } else {
-            cleanUp();
-            fail(
-              'netC received unexpected data from netA' +
-                '\n  expected: ' +
-                payload.toString('utf-8') +
-                '\n    actual: ' +
-                packet.payload.toString('utf8')
-            );
-          }
-        }
-      });
-
-      netA.connect({
-        name: 'netA-' + randomId(),
-      });
-
-      netB.connect({
-        name: 'netB-' + randomId(),
-      });
-
-      netC.connect({
-        name: 'netC-' + randomId(),
-      });
+      // Connect the peers
+      [sender, ...receivers].forEach((peer) => peer.net.connect({ name: peer.name }));
 
       return cleanUp;
     },
-    { timeout: 5000 }
+    { timeout: 5000 },
   );
 });
 
 test('NUClearNet can send and receive unreliable untargeted messages', async () => {
   // Test set up:
-  //   - Create three network instances (A, B, C) and connect them
-  //   - Wait for both B and C to join A, then start an interval to unreliably send the same payload, without a target.
+  //   - Create one sender and N-1 receiver network instances and connect them
+  //   - Wait for all receivers to join the sender, then start an interval to unreliably send the same payload, without a target.
   //     The interval ensures multiple messages will be sent, to compensate for any that are dropped due to the unreliable send.
-  //   - End successfully if both B and C got the payload from A
-  //   - End with failure if B or C got a payload from A that was not the expected payload
-  //   - Automatically end with failure if all of the above didn't happen before the timeout
+  //   - End successfully when every receiver gets the payload from the sender
+  //   - End with failure if any receiver gets a payload from the sender that was not the expected payload
+  //   - Automatically end with failure if all of the above doesn't happen before the timeout
   await asyncTest(
     (done, fail) => {
-      const netA = new NUClearNet();
-      const netB = new NUClearNet();
-      const netC = new NUClearNet();
+      const [sender, ...receivers] = createPeers(4, (self, peers) => {
+        return {
+          ...self, // name and net instance
+          joinedBy: Object.fromEntries(peers.map((peer) => [peer.name, peer.name === self.name])), // { [peerName]: peerJoined }
+          gotExpectedMessage: false,
+        };
+      });
 
       let sendInterval;
 
       function cleanUp() {
-        if (sendInterval) {
-          clearInterval(sendInterval);
-          sendInterval = undefined;
-        }
-
-        netA.destroy();
-        netB.destroy();
-        netC.destroy();
+        sendInterval && clearInterval(sendInterval);
+        [sender, ...receivers].forEach((peer) => peer.net.destroy());
       }
 
       const payload = Buffer.from('oh hai guys!');
 
-      let bConnected = false;
-      let cConnected = false;
-
       function checkConnected() {
-        // Start sending unreliable messages after both peers are connected
-        if (bConnected && cConnected) {
+        // Start sending unreliable messages after every receiver is connected
+        if (receivers.every((r) => sender.joinedBy[r.name])) {
           sendInterval && clearInterval(sendInterval);
           sendInterval = setInterval(() => {
-            netA.send({
+            sender.net.send({
               reliable: false,
               type: 'message-from-a',
               payload,
@@ -608,79 +510,54 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
         }
       }
 
-      netA.on('nuclear_join', (peer) => {
-        if (peer.name === netB.options.name) {
-          bConnected = true;
-          checkConnected();
-        }
-
-        if (peer.name === netC.options.name) {
-          cConnected = true;
-          checkConnected();
-        }
-      });
-
-      let bGotMessage = false;
-      let cGotMessage = false;
-
       function checkComplete() {
-        if (bGotMessage && cGotMessage) {
+        // Complete the test if every receiver got the expected message
+        if (receivers.every((receiver) => receiver.gotExpectedMessage)) {
           cleanUp();
           done();
         }
       }
 
-      netB.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name) {
+      // Keep track of which receivers that are joining the sender
+      sender.net.on('nuclear_join', (peer) => {
+        const receiver = receivers.find((receiver) => receiver.name === peer.name);
+        if (receiver) {
+          sender.joinedBy[receiver.name] = true;
+          checkConnected();
+        }
+      });
+
+      // Set up a listener on each of the receivers
+      for (const receiver of receivers) {
+        receiver.net.on('message-from-a', (packet) => {
+          // Ignore packets not from our sender
+          if (packet.peer.name !== sender.name) {
+            return;
+          }
+
+          // Ensure that the packet is what we expected from the sender
           if (packet.payload.compare(payload) === 0) {
-            bGotMessage = true;
+            receiver.gotExpectedMessage = true;
             checkComplete();
           } else {
             cleanUp();
             fail(
-              'netB received unexpected data from netA' +
+              `receiver ${receiver.name} got unexpected data from sender` +
                 '\n  expected: ' +
                 payload.toString('utf-8') +
                 '\n    actual: ' +
-                packet.payload.toString('utf-8')
+                packet.payload.toString('utf-8'),
             );
           }
-        }
-      });
+        });
+      }
 
-      netC.on('message-from-a', (packet) => {
-        if (packet.peer.name === netA.options.name) {
-          if (packet.payload.compare(payload) === 0) {
-            cGotMessage = true;
-            checkComplete();
-          } else {
-            cleanUp();
-            fail(
-              'netC received unexpected data from netA' +
-                '\n  expected: ' +
-                payload.toString('utf-8') +
-                '\n    actual: ' +
-                packet.payload.toString('utf8')
-            );
-          }
-        }
-      });
-
-      netA.connect({
-        name: 'netA-' + randomId(),
-      });
-
-      netB.connect({
-        name: 'netB-' + randomId(),
-      });
-
-      netC.connect({
-        name: 'netC-' + randomId(),
-      });
+      // Connect the peers
+      [sender, ...receivers].forEach((peer) => peer.net.connect({ name: peer.name }));
 
       return cleanUp;
     },
-    { timeout: 5000 }
+    { timeout: 5000 },
   );
 });
 
