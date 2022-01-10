@@ -34,7 +34,11 @@ namespace extension {
             // Startup WSA for IO
             WORD version = MAKEWORD(2, 2);
             WSADATA wsa_data;
-            WSAStartup(version, &wsa_data); // TODO: Check return status
+
+            int startup_status = WSAStartup(version, &wsa_data);
+            if (startup_status != 0) {
+                throw std::system_error(startup_status, std::system_category(), "WSAStartup() failed");
+            }
 
             // Reserve 1024 event slots
             // Hopefully we won't have more events than that
@@ -42,7 +46,11 @@ namespace extension {
             events.reserve(1024);
 
             // Create an event to use for the notifier (used for getting out of WSAWaitForMultipleEvents())
-            notifier = WSACreateEvent(); // TODO: Check return status
+            notifier = WSACreateEvent();
+            if (notifier == WSA_INVALID_EVENT) {
+                throw std::system_error(
+                    WSAGetLastError(), std::system_category(), "WSACreateEvent() for notifier failed");
+            }
 
             // We always have the notifier in the event list
             events.push_back(notifier);
@@ -53,17 +61,28 @@ namespace extension {
                     std::lock_guard<std::mutex> lock(reaction_mutex);
 
                     // Make an event for this SOCKET
-                    auto event = WSACreateEvent(); // TODO: Check return status
+                    auto event = WSACreateEvent();
+                    if (event == WSA_INVALID_EVENT) {
+                        throw std::system_error(WSAGetLastError(),
+                                                std::system_category(),
+                                                "WSACreateEvent() for configure io reaction failed");
+                    }
 
                     // Link the event to signal when there are events on the socket
-                    WSAEventSelect(config.fd, event, config.events); // TODO: Check return status
+                    if (WSAEventSelect(config.fd, event, config.events) == SOCKET_ERROR) {
+                        throw std::system_error(WSAGetLastError(), std::system_category(), "WSAEventSelect() failed");
+                    }
 
                     // Add all the information to the list and mark the list as dirty, to sync with the list of events
                     reactions.insert(std::make_pair(event, Event{config.fd, config.reaction, config.events}));
                     reactions_list_dirty = true;
 
                     // Signal the notifier event to return from WSAWaitForMultipleEvents() and sync the dirty list
-                    WSASetEvent(notifier); // TODO: Check return status
+                    if (!WSASetEvent(notifier)) {
+                        throw std::system_error(WSAGetLastError(),
+                                                std::system_category(),
+                                                "WSASetEvent() for configure io reaction failed");
+                    }
                 });
 
             on<Trigger<dsl::operation::Unbind<IO>>>().then(
@@ -72,9 +91,10 @@ namespace extension {
                     std::lock_guard<std::mutex> lock(reaction_mutex);
 
                     // Find this reaction in our list of reactions
-                    auto reaction = std::find_if(std::begin(reactions), std::end(reactions), [&unbind](const std::pair<WSAEVENT, Event>& item) {
-                        return item.second.reaction->id == unbind.id;
-                    });
+                    auto reaction = std::find_if(
+                        std::begin(reactions), std::end(reactions), [&unbind](const std::pair<WSAEVENT, Event>& item) {
+                            return item.second.reaction->id == unbind.id;
+                        });
 
                     // If the reaction was found
                     if (reaction != std::end(reactions)) {
@@ -82,16 +102,20 @@ namespace extension {
                         reactions.erase(reaction);
 
                         // Queue the associated event for closing when we sync
-                        events_to_close.push_back(reaction.first);
-                    } else {
-                        // Probably error here? We've unbound a reaction that somehow wasn't in our list of reactions!
+                        events_to_close.push_back(reaction->first);
+                    }
+                    else {
+                        // Fail silently: we've unbound a reaction that somehow isn't in our list of reactions!
                     }
 
                     // Flag that our list is dirty
                     reactions_list_dirty = true;
 
                     // Signal the notifier event to return from WSAWaitForMultipleEvents() and sync the dirty list
-                    WSASetEvent(notifier); // TODO: Check return status
+                    if (!WSASetEvent(notifier)) {
+                        throw std::system_error(
+                            WSAGetLastError(), std::system_category(), "WSASetEvent() for unbind io reaction failed");
+                    }
                 });
 
             on<Shutdown>().then("Shutdown IO Controller", [this] {
@@ -99,24 +123,31 @@ namespace extension {
                 shutdown = true;
 
                 // Signal the notifier event to return from WSAWaitForMultipleEvents() and shutdown
-                WSASetEvent(notifier); // TODO: Check return status
+                if (!WSASetEvent(notifier)) {
+                    throw std::system_error(
+                        WSAGetLastError(), std::system_category(), "WSASetEvent() for shutdown failed");
+                }
             });
 
             on<Always>().then("IO Controller", [this] {
                 if (!shutdown) {
                     // Wait for events
-                    auto eventIndex = WSAWaitForMultipleEvents(
+                    auto event_index = WSAWaitForMultipleEvents(
                         static_cast<DWORD>(events.size()), events.data(), false, WSA_INFINITE, false);
 
                     // Check if the return value is an event in our list
-                    if (eventIndex >= WSA_WAIT_EVENT_0 && eventIndex < WSA_WAIT_EVENT_0 + events.size()) {
+                    if (event_index >= WSA_WAIT_EVENT_0 && event_index < WSA_WAIT_EVENT_0 + events.size()) {
                         // Get the signalled event
-                        auto& event = events[eventIndex - WSA_WAIT_EVENT_0];
+                        auto& event = events[event_index - WSA_WAIT_EVENT_0];
 
                         if (event == notifier) {
                             // Reset the notifier signal
-                            WSAResetEvent(event); // TODO: Check return status
-                        } else {
+                            if (!WSAResetEvent(event)) {
+                                throw std::system_error(
+                                    WSAGetLastError(), std::system_category(), "WSAResetEvent() for notifier failed");
+                            }
+                        }
+                        else {
                             // Get our associated Event object, which has the reaction
                             auto r = reactions.find(event);
 
@@ -124,7 +155,10 @@ namespace extension {
                             if (r != reactions.end()) {
                                 // Enum the socket events to work out which ones fired
                                 WSANETWORKEVENTS wsae;
-                                WSAEnumNetworkEvents(r->second.fd, event, &wsae);
+                                if (WSAEnumNetworkEvents(r->second.fd, event, &wsae) == SOCKET_ERROR) {
+                                    throw std::system_error(
+                                        WSAGetLastError(), std::system_category(), "WSAEnumNetworkEvents() failed");
+                                }
 
                                 // Make our IO event to pass through
                                 IO::Event io_event;
@@ -151,18 +185,21 @@ namespace extension {
                     }
                 }
 
-                if (reactions_list_dirty || events_to_close.size() > 0) {
+                if (reactions_list_dirty || !events_to_close.empty()) {
                     // Get the lock so we don't concurrently modify the list
                     std::lock_guard<std::mutex> lock(reaction_mutex);
 
                     // Close any events we've queued for closing
-                    if (events_to_close.size() > 0) {
+                    if (!events_to_close.empty()) {
                         for (auto& event : events_to_close) {
-                            WSACloseEvent(event); // TODO: Check return status
+                            if (!WSACloseEvent(event)) {
+                                throw std::system_error(
+                                    WSAGetLastError(), std::system_category(), "WSACloseEvent() failed");
+                            }
                         }
 
-                        // Clear the list of closed events
-                        events_to_close.resize(0);
+                        // Clear the queue of closed events
+                        events_to_close.clear();
                     }
 
                     // Clear the list of events, to be rebuilt
@@ -196,7 +233,7 @@ namespace extension {
 
         WSAEVENT notifier;
 
-        bool shutdown = false;
+        bool shutdown             = false;
         bool reactions_list_dirty = false;
 
         std::mutex reaction_mutex;
