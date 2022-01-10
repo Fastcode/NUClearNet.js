@@ -3,7 +3,7 @@ const assert = require('uvu/assert');
 
 const { NUClearNet } = require('..');
 
-function uniqueId() {
+function randomId() {
   return String(Math.random() * 100000000).slice(0, 8);
 }
 
@@ -157,11 +157,11 @@ test('NUClearNet emits join events', async () => {
       });
 
       netA.connect({
-        name: 'netA-' + uniqueId(),
+        name: 'netA-' + randomId(),
       });
 
       netB.connect({
-        name: 'netB-' + uniqueId(),
+        name: 'netB-' + randomId(),
       });
 
       return cleanUp;
@@ -201,11 +201,11 @@ test('NUClearNet emits leave events', async () => {
       });
 
       netA.connect({
-        name: 'netA-' + uniqueId(),
+        name: 'netA-' + randomId(),
       });
 
       netB.connect({
-        name: 'netB-' + uniqueId(),
+        name: 'netB-' + randomId(),
       });
 
       return cleanUp;
@@ -306,15 +306,15 @@ test('NUClearNet can send and receive reliable targeted messages', async () => {
       });
 
       netA.connect({
-        name: 'netA-' + uniqueId(),
+        name: 'netA-' + randomId(),
       });
 
       netB.connect({
-        name: 'netB-' + uniqueId(),
+        name: 'netB-' + randomId(),
       });
 
       netC.connect({
-        name: 'netC-' + uniqueId(),
+        name: 'netC-' + randomId(),
       });
 
       return cleanUp;
@@ -435,15 +435,15 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
       });
 
       netA.connect({
-        name: 'netA-' + uniqueId(),
+        name: 'netA-' + randomId(),
       });
 
       netB.connect({
-        name: 'netB-' + uniqueId(),
+        name: 'netB-' + randomId(),
       });
 
       netC.connect({
-        name: 'netC-' + uniqueId(),
+        name: 'netC-' + randomId(),
       });
 
       return cleanUp;
@@ -545,15 +545,15 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
       });
 
       netA.connect({
-        name: 'netA-' + uniqueId(),
+        name: 'netA-' + randomId(),
       });
 
       netB.connect({
-        name: 'netB-' + uniqueId(),
+        name: 'netB-' + randomId(),
       });
 
       netC.connect({
-        name: 'netC-' + uniqueId(),
+        name: 'netC-' + randomId(),
       });
 
       return cleanUp;
@@ -667,15 +667,15 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
       });
 
       netA.connect({
-        name: 'netA-' + uniqueId(),
+        name: 'netA-' + randomId(),
       });
 
       netB.connect({
-        name: 'netB-' + uniqueId(),
+        name: 'netB-' + randomId(),
       });
 
       netC.connect({
-        name: 'netC-' + uniqueId(),
+        name: 'netC-' + randomId(),
       });
 
       return cleanUp;
