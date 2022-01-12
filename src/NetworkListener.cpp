@@ -17,58 +17,105 @@
 
 #include "NetworkListener.hpp"
 
-namespace NUClear {
-NetworkListener::NetworkListener(NetworkBinding* binding)
-: Nan::AsyncProgressWorker(new Nan::Callback()), binding(binding) {
+#include <iostream>
 
-    std::vector<NUClear::fd_t> notifyfds = binding->net.listen_fds();
+namespace NUClear {
+NetworkListener::NetworkListener(Napi::Env& env, NetworkBinding* binding)
+: Napi::AsyncProgressWorker<char>(env), binding(binding) {
+    std::vector<NUClear::fd_t> notifyfds = this->binding->net.listen_fds();
 
 #ifdef _WIN32
-    // Make event and link it up
+    // Make an Event object for each of the notify fds
     for (auto& fd : notifyfds) {
         auto event = WSACreateEvent();
-        WSAEventSelect(fd, event, FD_READ | FD_CLOSE);
+        if (event == WSA_INVALID_EVENT) {
+            throw std::system_error(WSAGetLastError(),
+                                    std::system_category(),
+                                    "WSACreateEvent() for notify fd failed");
+        }
 
-        fds.push_back(fd);
-        events.push_back(event);
+        if (WSAEventSelect(fd, event, FD_READ | FD_CLOSE) == SOCKET_ERROR) {
+            throw std::system_error(WSAGetLastError(), std::system_category(), "WSAEventSelect() for notify fd failed");
+        }
+
+        this->fds.push_back(fd);
+        this->events.push_back(event);
     }
+
+    // Create an event to use for the notifier (used for getting out of WSAWaitForMultipleEvents())
+    this->notifier = WSACreateEvent();
+    if (this->notifier == WSA_INVALID_EVENT) {
+        throw std::system_error(WSAGetLastError(), std::system_category(), "WSACreateEvent() for notifier failed");
+    }
+
+    this->events.push_back(notifier);
 #else
-    // Make event
+    // Make a pollfd for each of the notify fds
     for (auto& fd : notifyfds) {
-        fds.push_back(pollfd{fd, POLLIN, 0});
+        this->fds.push_back(pollfd{fd, POLLIN, 0});
     }
 #endif  // _WIN32
 }
 
-void NetworkListener::Execute(const ExecutionProgress& p) {
+NetworkListener::~NetworkListener() {
+#ifdef _WIN32
+    for (auto& event : this->events) {
+        if (!WSACloseEvent(event)) {
+            std::cerr << "[NUClearNet.js NetworkListener] WSACloseEvent() failed, error code " << WSAGetLastError() << std::endl;
+        }
+    }
+#endif
+}
+
+void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionProgress& p) {
     bool run = true;
-    while (run) {
+
+    // The run loop: runs until we get an FD close (setting run to false) or the network binding is destroyed
+    while (run && !this->binding->destroyed) {
         bool data = false;
 
 #ifdef _WIN32
         // Wait for events and check for shutdown
-        auto event = WSAWaitForMultipleEvents(events.size(), events.data(), false, WSA_INFINITE, false);
+        auto event_index = WSAWaitForMultipleEvents(this->events.size(), this->events.data(), false, WSA_INFINITE, false);
 
-        if (event >= WSA_WAIT_EVENT_0 && event < WSA_WAIT_EVENT_0 + events.size()) {
-            auto& e  = events[event - WSA_WAIT_EVENT_0];
-            auto& fd = fds[event - WSA_WAIT_EVENT_0];
+        // Check if the return value is an event in our list
+        if (event_index >= WSA_WAIT_EVENT_0 && event_index < WSA_WAIT_EVENT_0 + this->events.size()) {
+            // Get the signalled event
+            auto& event  = this->events[event_index - WSA_WAIT_EVENT_0];
 
-            WSANETWORKEVENTS wsne;
-            WSAEnumNetworkEvents(fd, e, &wsne);
+            if (event == this->notifier) {
+                // Reset the notifier signal
+                if (!WSAResetEvent(event)) {
+                    throw std::system_error(
+                        WSAGetLastError(), std::system_category(), "WSAResetEvent() for notifier failed");
+                }
+            } else {
+                // Get the corresponding fd for the event
+                auto& fd = this->fds[event_index - WSA_WAIT_EVENT_0];
 
-            if ((wsne.lNetworkEvents & FD_CLOSE) != 0) {
-                run = false;
-            }
-            else if ((wsne.lNetworkEvents & FD_READ) != 0) {
-                data = true;
+                // Enumumerate the socket events to work out which ones fired
+                WSANETWORKEVENTS wsne;
+                if (WSAEnumNetworkEvents(fd, event, &wsne) == SOCKET_ERROR) {
+                    throw std::system_error(
+                        WSAGetLastError(), std::system_category(), "WSAEnumNetworkEvents() failed");
+                }
+
+                // Exit the run loop if the fd was closed
+                if ((wsne.lNetworkEvents & FD_CLOSE) != 0) {
+                    run = false;
+                }
+                // Set the data flag if the fd has data to read
+                else if ((wsne.lNetworkEvents & FD_READ) != 0) {
+                    data = true;
+                }
             }
         }
 #else
         // Wait for events and check for shutdown
-        poll(fds.data(), static_cast<nfds_t>(fds.size()), 500);
+        poll(this->fds.data(), static_cast<nfds_t>(this->fds.size()), 500);
 
         // Check if the connections closed
-        for (const auto& fd : fds) {
+        for (const auto& fd : this->fds) {
             if ((fd.revents & POLLNVAL) != 0) {
                 run = false;
             }
@@ -77,22 +124,24 @@ void NetworkListener::Execute(const ExecutionProgress& p) {
             }
         }
 #endif  // _WIN32
-        // Notify the system something happened if it's running
+
+        // Notify the system something happened if we're running and have data to read.
+        // Will trigger OnProgress() below to read the data.
         if (run && data) {
-            p.Signal();
+            // Should really be `p.Signal()` here, but it has a bug at the moment
+            // See https://github.com/nodejs/node-addon-api/issues/1081
+            p.Send(nullptr, 0);
         }
     }
 }
 
-void NetworkListener::HandleProgressCallback(const char*, size_t) {
-    Nan::HandleScope scope;
-
-    // Call process when there is data
-    binding->net.process();
+void NetworkListener::OnProgress(const char*, size_t) {
+    // If we're here in OnProgress(), then there's data to process
+    this->binding->net.process();
 }
 
-void NetworkListener::HandleOKCallback() {}
+void NetworkListener::OnOK() {}
 
-void NetworkListener::HandleErrorCallback() {}
+void NetworkListener::OnError(const Napi::Error& e) {}
 
 }  // namespace NUClear

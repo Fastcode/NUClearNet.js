@@ -16,18 +16,23 @@
  */
 
 #include "NetworkBinding.hpp"
-#include <nan.h>
+#include <napi.h>
 
-void Init(v8::Local<v8::Object> exports, v8::Local<v8::Object> module) {
+Napi::Object Init(Napi::Env env, Napi::Object exports) {
 
 // If we are on windows, we need to WSAStartup
 #ifdef _WIN32
     WORD version = MAKEWORD(2, 2);
     WSADATA wsa_data;
-    WSAStartup(version, &wsa_data);
+    int startup_status = WSAStartup(version, &wsa_data);
+    if (startup_status != 0) {
+        throw std::system_error(startup_status, std::system_category(), "WSAStartup() failed");
+    }
 #endif
 
-    NUClear::NetworkBinding::Init(exports, module);
+    NUClear::NetworkBinding::Init(env, exports);
+
+    return exports;
 }
 
-NODE_MODULE(nuclearnet, Init)
+NODE_API_MODULE(nuclearnet, Init)

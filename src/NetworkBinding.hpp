@@ -19,24 +19,31 @@
 #define NETWORKBINDING_H
 
 #include "nuclear/src/extension/network/NUClearNetwork.hpp"
-#include <nan.h>
+#include "napi-thread-safe-callback.hpp"
+#include <napi.h>
 
 namespace NUClear {
 
-class NetworkBinding : public Nan::ObjectWrap {
+class NetworkBinding : public Napi::ObjectWrap<NetworkBinding> {
 public:
-    NetworkBinding();
-    static void Hash(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static void Send(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static void On(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static void Reset(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static void Process(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static void Shutdown(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static void Init(v8::Local<v8::Object> exports, v8::Local<v8::Object> module);
-    static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static Nan::Persistent<v8::Function> constructor;
+    NetworkBinding(const Napi::CallbackInfo& info);
+
+    Napi::Value Hash(const Napi::CallbackInfo& info);
+    void Send(const Napi::CallbackInfo& info);
+    void On(const Napi::CallbackInfo& info);
+    void Reset(const Napi::CallbackInfo& info);
+    void Process(const Napi::CallbackInfo& info);
+    void Shutdown(const Napi::CallbackInfo& info);
+    void Destroy(const Napi::CallbackInfo& info);
 
     extension::network::NUClearNetwork net;
+    bool destroyed = false;
+
+#ifdef _WIN32
+    WSAEVENT listenerNotifier;
+#endif
+
+    static void Init(Napi::Env env, Napi::Object exports);
 };
 
 }  // namespace NUClear

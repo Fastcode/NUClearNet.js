@@ -4,7 +4,11 @@
   "description": "Node.js module for interacting with the NUClear network",
   "main": "index.js",
   "types": "index.d.ts",
+  "engines": {
+    "node": "~10 >=10.20 || >=12.17"
+  },
   "scripts": {
+    "build": "node-gyp configure && node-gyp build",
     "test": "node tests/test.js"
   },
   "repository": {
@@ -24,10 +28,11 @@
   "homepage": "https://github.com/Fastcode/NUClearNet.js#readme",
   "gypfile": true,
   "devDependencies": {
-    "segfault-handler": "^1.0.0"
+    "uvu": "^0.5.2"
   },
   "dependencies": {
     "bindings": "^1.5.0",
-    "nan": "^2.14.0"
+    "napi-thread-safe-callback": "0.0.6",
+    "node-addon-api": "^4.2.0"
   }
 }
