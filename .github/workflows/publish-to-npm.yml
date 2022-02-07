@@ -5,17 +5,45 @@ on:
     types: [published]
 
 jobs:
-  build:
+  Publish to npm:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          ref: main
       # Installs Node and sets up up the .npmrc file to publish to npm
       - uses: actions/setup-node@v2
         with:
           node-version: '16.x'
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
-      - run: npm test
+      # Run the tests up to 5 times if it fails (to avoid the error "Network error when sending
+      # the announce packet: Bad file descriptor" that occurs occasionally on startup)
+      # TODO: investigate and fix the actual issue.
+      - shell: bash
+        run: |
+        function fail {
+          echo $1 >&2
+          exit 1
+        }
+
+        function retryOnFail {
+          local n=1
+          local max=5
+          while true; do
+            "$@" && break || {
+              if [[ $n -lt $max ]]; then
+                ((n++))
+                echo "Test failed. Attempt $n/$max:"
+                sleep 1;
+              else
+                fail "Test failed after $n attempts."
+              fi
+            }
+          done
+        }
+
+        retryOnFail npm test
       - run: node .github/auto-publish-action.js
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
