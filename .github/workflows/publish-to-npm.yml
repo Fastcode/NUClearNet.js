@@ -22,28 +22,28 @@ jobs:
       # TODO: investigate and fix the actual issue.
       - shell: bash
         run: |
-        function fail {
-          echo $1 >&2
-          exit 1
-        }
+          function fail {
+            echo $1 >&2
+            exit 1
+          }
 
-        function retryOnFail {
-          local n=1
-          local max=5
-          while true; do
-            "$@" && break || {
-              if [[ $n -lt $max ]]; then
-                ((n++))
-                echo "Test failed. Attempt $n/$max:"
-                sleep 1;
-              else
-                fail "Test failed after $n attempts."
-              fi
-            }
-          done
-        }
+          function retryOnFail {
+            local n=1
+            local max=5
+            while true; do
+              "$@" && break || {
+                if [[ $n -lt $max ]]; then
+                  ((n++))
+                  echo "Test failed. Attempt $n/$max:"
+                  sleep 1;
+                else
+                  fail "Test failed after $n attempts."
+                fi
+              }
+            done
+          }
 
-        retryOnFail npm test
+          retryOnFail npm test
       - run: node .github/auto-publish-action.js
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
