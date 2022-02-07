@@ -4,6 +4,7 @@ const { existsSync } = require('fs');
 const { spawn } = require('child_process');
 
 const workspace = process.env.GITHUB_WORKSPACE;
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 (async () => {
   const pkg = getPackageJson();
@@ -20,7 +21,7 @@ const workspace = process.env.GITHUB_WORKSPACE;
   }
 
   const releaseTargetBranch = event.release.target_commitish;
-  const currentBranch = /refs\/[a-zA-Z]+\/(.*)/.exec(process.env.GITHUB_REF)[1];
+  const currentBranch = process.env.GITHUB_REF_NAME;
 
   if (releaseTargetBranch !== 'main' || currentBranch !== 'main') {
     exitSuccess('This action is only run when a release is published from the main branch.');
@@ -45,10 +46,10 @@ const workspace = process.env.GITHUB_WORKSPACE;
     ]);
 
     // Bump the version in package.json, and make a commit
-    await runInWorkspace('npm', ['version', '--git-tag-version=false', newVersion]);
+    await runInWorkspace(npmCommand, ['version', newVersion]);
 
     // Publish to npm
-    await runInWorkspace('npm', ['publish']);
+    await runInWorkspace(npmCommand, ['publish']);
 
     // Push the package.json commit to the repo
     const remoteRepo = `https://${process.env.GITHUB_ACTOR}:${process.env.GITHUB_TOKEN}@github.com/${process.env.GITHUB_REPOSITORY}.git`;
