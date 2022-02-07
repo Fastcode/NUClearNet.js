@@ -71,11 +71,14 @@ const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     // Publish to npm
     await runInWorkspace(npmCommand, ['publish']);
 
-    console.log('pushing version commit and tag...');
+    console.log('pushing version commit...');
 
     // Push the package.json commit to the repo
     const remoteRepo = `https://${process.env.GITHUB_ACTOR}:${process.env.GITHUB_TOKEN}@github.com/${process.env.GITHUB_REPOSITORY}.git`;
     await runInWorkspace('git', ['push', remoteRepo]);
+
+    console.log('pushing version tag...');
+    await runInWorkspace('git', ['push', remoteRepo, 'v' + newVersion]);
   } catch (e) {
     logError(e);
     exitFailure('Failed to bump version');
