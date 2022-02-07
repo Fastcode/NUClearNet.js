@@ -1,6 +1,6 @@
 {
   "name": "nuclearnet.js",
-  "version": "1.5.5",
+  "version": "0.1.6-beta.5",
   "description": "Node.js module for interacting with the NUClear network",
   "main": "index.js",
   "types": "index.d.ts",
