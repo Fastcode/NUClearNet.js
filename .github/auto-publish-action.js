@@ -47,6 +47,10 @@ const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   }
 
   try {
+    console.log('checking out main branch');
+
+    await runInWorkspace('git', ['checkout', 'main']);
+
     console.log('setting git credentials...');
 
     // Configure the git user for the commit
