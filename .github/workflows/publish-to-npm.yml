@@ -18,33 +18,10 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       # Run the tests up to 5 times if it fails (to avoid the error "Network error when sending
-      # the announce packet: Bad file descriptor" that occurs occasionally on startup)
+      # the announce packet: Bad file descriptor" that occurs sometimes on startup)
       # TODO: investigate and fix the actual issue.
       - shell: bash
-        run: |
-          function fail {
-            echo $1 >&2
-            exit 1
-          }
-
-          function retryOnFail {
-            local n=1
-            local max=5
-            while true; do
-              "$@" && break || {
-                if [[ $n -lt $max ]]; then
-                  ((n++))
-                  echo "Test failed. Attempt $n/$max:"
-                  sleep 1;
-                else
-                  fail "Test failed after $n attempts."
-                fi
-              }
-            done
-          }
-
-          retryOnFail npm test
+        run: ./tests/run-with-retries.sh
       - run: node .github/auto-publish-action.js
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
