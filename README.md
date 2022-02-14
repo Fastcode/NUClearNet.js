@@ -1,6 +1,6 @@
 # NUClearNet.js
 
-[![Node.js CI](https://github.com/Fastcode/NUClearNet.js/actions/workflows/node.js.yml/badge.svg)](https://github.com/Fastcode/NUClearNet.js/actions/workflows/node.js.yml)
+[![Node.js CI](https://github.com/Fastcode/NUClearNet.js/actions/workflows/node.js.yml/badge.svg?branch=main)](https://github.com/Fastcode/NUClearNet.js/actions/workflows/node.js.yml)
 
 Node.js module for interacting with the [NUClear](https://github.com/Fastcode/NUClear) network.
 
@@ -14,7 +14,7 @@ npm install nuclearnet.js --save
 
 ## Usage
 
-The following example show a typical usage pattern of creating a network instance, listening for join, leave, and packet events, and sending data.
+The following example shows a typical usage pattern of creating a network instance, listening for join, leave, and packet events, and sending data.
 
 ```js
 const { NUClearNet } = require('nuclearnet.js');
