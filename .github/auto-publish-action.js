@@ -7,11 +7,6 @@ const workspace = process.env.GITHUB_WORKSPACE;
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 (async () => {
-  const pkg = getPackageJson();
-  const currentVersion = pkg.version.toString();
-
-  console.log('current version:', currentVersion);
-
   const event = process.env.GITHUB_EVENT_PATH ? require(process.env.GITHUB_EVENT_PATH) : {};
 
   console.log('release event action:', event.action);
@@ -37,55 +32,33 @@ const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     return;
   }
 
-  const newVersion = event.release.tag_name.startsWith('v') ? event.release.tag_name.slice(1) : event.release.tag_name;
+  const releaseVersion = event.release.tag_name.startsWith('v')
+    ? event.release.tag_name.slice(1)
+    : event.release.tag_name;
 
-  console.log('new version', newVersion);
+  console.log('release version:', releaseVersion);
 
-  if (currentVersion === newVersion) {
-    exitSuccess('This action is only run when a release is published with a new version.');
+  const pkg = getPackageJson();
+  const packageVersion = pkg.version.toString();
+
+  console.log('package.json version:', packageVersion);
+
+  if (packageVersion !== releaseVersion) {
+    exitFailure('The version in package.json and the release tag version do not match.');
     return;
   }
 
   try {
-    console.log('checking out main branch');
-
-    await runInWorkspace('git', ['checkout', 'main']);
-
-    console.log('setting git credentials...');
-
-    // Configure the git user for the commit
-    await runInWorkspace('git', ['config', 'user.name', `"${process.env.GITHUB_USER || 'CI Version Bump'}"`]);
-    await runInWorkspace('git', [
-      'config',
-      'user.email',
-      `"${process.env.GITHUB_EMAIL || 'j.paye96@gmail.com'}"`,
-    ]);
-
-    console.log('bumping version with npm...');
-
-    // Bump the version in package.json, and make a commit
-    await runInWorkspace(npmCommand, ['version', newVersion]);
-
     console.log('publishing package...');
 
-    // Publish to npm
     await runInWorkspace(npmCommand, ['publish']);
 
-    console.log('pushing version commit...');
-
-    // Push the package.json commit to the repo
-    const remoteRepo = `https://${process.env.GITHUB_ACTOR}:${process.env.GITHUB_TOKEN}@github.com/${process.env.GITHUB_REPOSITORY}.git`;
-    await runInWorkspace('git', ['push', remoteRepo]);
-
-    console.log('pushing version tag...');
-    await runInWorkspace('git', ['push', remoteRepo, 'v' + newVersion]);
+    exitSuccess(`Package version v${releaseVersion} published!`);
   } catch (e) {
     logError(e);
-    exitFailure('Failed to bump version');
+    exitFailure('Failed to publish package');
     return;
   }
-
-  exitSuccess(`Version bumped to v${newVersion} and published!`);
 })();
 
 function getPackageJson() {
