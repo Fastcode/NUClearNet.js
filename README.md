@@ -1,5 +1,7 @@
 # NUClearNet.js
 
+[![Node.js CI](https://github.com/Fastcode/NUClearNet.js/actions/workflows/node.js.yml/badge.svg)](https://github.com/Fastcode/NUClearNet.js/actions/workflows/node.js.yml)
+
 Node.js module for interacting with the [NUClear](https://github.com/Fastcode/NUClear) network.
 
 ## Installation
