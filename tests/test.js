@@ -125,7 +125,7 @@ test('NUClearNet.send() throws if used before connect()', () => {
   const net = new NUClearNet();
 
   assert.throws(() => {
-    net.send('nuclearnet');
+    net.send({});
   }, /The network is not currently connected/);
 
   net.destroy();
