@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2023 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -16,43 +20,40 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "ReactionHandle.hpp"
+#ifndef NUCLEAR_UTIL_GROUPDESCRIPTOR_HPP
+#define NUCLEAR_UTIL_GROUPDESCRIPTOR_HPP
+
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+
+#include "../id.hpp"
 
 namespace NUClear {
-namespace threading {
+namespace util {
 
-    ReactionHandle::ReactionHandle(const std::shared_ptr<Reaction>& context) : context(context) {}
+    /**
+     * @brief A description of a group
+     */
+    struct GroupDescriptor {
+        /// @brief a unique identifier for this pool
+        NUClear::id_t group_id{0};
 
-    bool ReactionHandle::enabled() {
-        auto c = context.lock();
-        return c ? bool(c->enabled) : false;
-    }
+        /// @brief the maximum number of threads that can run concurrently in this group
+        size_t thread_count{std::numeric_limits<size_t>::max()};
 
-    ReactionHandle& ReactionHandle::enable() {
-        auto c = context.lock();
-        if (c) { c->enabled = true; }
-        return *this;
-    }
+        /**
+         * @brief Return the next unique ID for a new group
+         */
+        static NUClear::id_t get_unique_group_id() noexcept {
+            // Make group 0 the default group
+            static std::atomic<NUClear::id_t> source{1};
+            return source++;
+        }
+    };
 
-    ReactionHandle& ReactionHandle::enable(bool set) {
-        auto c = context.lock();
-        if (c) { c->enabled = set; }
-        return *this;
-    }
-
-    ReactionHandle& ReactionHandle::disable() {
-        auto c = context.lock();
-        if (c) { c->enabled = false; }
-        return *this;
-    }
-
-    void ReactionHandle::unbind() {
-        auto c = context.lock();
-        if (c) { c->unbind(); }
-    }
-
-    ReactionHandle::operator bool() const {
-        return bool(context.lock());
-    }
-}  // namespace threading
+}  // namespace util
 }  // namespace NUClear
+
+#endif  // NUCLEAR_UTIL_GROUPDESCRIPTOR_HPP

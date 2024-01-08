@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -42,9 +46,9 @@ namespace dsl {
                           "The provided DSL sentence does not have any components that bind a function");
         };
 
-        // TODO Test that the function signature matches the arguments that will be obtained by get
+        // TODO(Trent) Test that the function signature matches the arguments that will be obtained by get
 
-        // TODO Test that the function signature uses the correct constness in the arguments
+        // TODO(Trent) Test that the function signature uses the correct constness in the arguments
 
     }  // namespace validation
 }  // namespace dsl

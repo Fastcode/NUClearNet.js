@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,10 +23,11 @@
 #ifndef NUCLEAR_DSL_WORD_NETWORK_HPP
 #define NUCLEAR_DSL_WORD_NETWORK_HPP
 
-#include "../store/ThreadStore.hpp"
-#include "../trait/is_transient.hpp"
+#include "../../threading/Reaction.hpp"
 #include "../../util/network/sock_t.hpp"
 #include "../../util/serialise/Serialise.hpp"
+#include "../store/ThreadStore.hpp"
+#include "../trait/is_transient.hpp"
 
 namespace NUClear {
 namespace dsl {
@@ -31,24 +36,19 @@ namespace dsl {
         template <typename T>
         struct NetworkData : public std::shared_ptr<T> {
             NetworkData() : std::shared_ptr<T>() {}
-            NetworkData(T* ptr) : std::shared_ptr<T>(ptr) {}
+            explicit NetworkData(T* ptr) : std::shared_ptr<T>(ptr) {}
             NetworkData(const std::shared_ptr<T>& ptr) : std::shared_ptr<T>(ptr) {}
-            NetworkData(std::shared_ptr<T>&& ptr) : std::shared_ptr<T>(ptr) {}
         };
 
         struct NetworkSource {
-            NetworkSource() : name(""), address() {}
-
-            std::string name;
-            util::network::sock_t address;
-            bool reliable;
+            std::string name{};
+            util::network::sock_t address{};
+            bool reliable{false};
         };
 
         struct NetworkListen {
-            NetworkListen() : hash(), reaction() {}
-
-            uint64_t hash;
-            std::shared_ptr<threading::Reaction> reaction;
+            uint64_t hash{0};
+            std::shared_ptr<threading::Reaction> reaction{nullptr};
         };
 
         /**
@@ -93,10 +93,11 @@ namespace dsl {
             }
 
             template <typename DSL>
-            static inline std::tuple<std::shared_ptr<NetworkSource>, NetworkData<T>> get(threading::Reaction&) {
+            static inline std::tuple<std::shared_ptr<NetworkSource>, NetworkData<T>> get(
+                const threading::Reaction& /*reaction*/) {
 
-                auto data   = store::ThreadStore<std::vector<char>>::value;
-                auto source = store::ThreadStore<NetworkSource>::value;
+                auto* data   = store::ThreadStore<std::vector<uint8_t>>::value;
+                auto* source = store::ThreadStore<NetworkSource>::value;
 
                 if (data && source) {
 
@@ -104,11 +105,9 @@ namespace dsl {
                     return std::make_tuple(std::make_shared<NetworkSource>(*source),
                                            std::make_shared<T>(util::serialise::Serialise<T>::deserialise(*data)));
                 }
-                else {
 
-                    // Return invalid data
-                    return std::make_tuple(std::shared_ptr<NetworkSource>(nullptr), NetworkData<T>(nullptr));
-                }
+                // Return invalid data
+                return std::make_tuple(std::shared_ptr<NetworkSource>(nullptr), NetworkData<T>(nullptr));
             }
         };
 

@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2016 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -21,18 +25,18 @@
 
 #ifndef _WIN32
 
-#    include <pthread.h>
+    #include <pthread.h>
 
 inline void update_current_thread_priority(int priority) {
 
-    // TODO SCHED_NORMAL for normal threads
-    // TODO SCHED_FIFO for realtime threads
-    // TODO SCHED_RR for high priority threads
+    // TODO(Trent) SCHED_NORMAL for normal threads
+    // TODO(Trent) SCHED_FIFO for realtime threads
+    // TODO(Trent) SCHED_RR for high priority threads
 
     auto sched_priority = sched_get_priority_min(SCHED_RR)
                           + (priority / (sched_get_priority_max(SCHED_RR) - sched_get_priority_min(SCHED_RR)));
 
-    sched_param p;
+    sched_param p{};
     p.sched_priority = sched_priority;
     pthread_setschedparam(pthread_self(), SCHED_RR, &p);
 }
@@ -40,7 +44,7 @@ inline void update_current_thread_priority(int priority) {
 
 #ifdef _WIN32
 
-#    include "platform.hpp"
+    #include "platform.hpp"
 
 inline void update_current_thread_priority(int priority) {
 

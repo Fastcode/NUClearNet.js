@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2016 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -56,12 +60,13 @@ namespace util {
                 for (PIP_ADAPTER_ADDRESSES addr = addrs; addr != nullptr; addr = addr->Next) {
                     // Skip adapters that are not up and able to process packets (e.g. they're disconnected, disabled,
                     // etc)
-                    if (addr->OperStatus != IfOperStatusUp) { continue; }
+                    if (addr->OperStatus != IfOperStatusUp) {
+                        continue;
+                    }
 
                     for (auto uaddr = addr->FirstUnicastAddress; uaddr != nullptr; uaddr = uaddr->Next) {
 
-                        Interface iface;
-                        std::memset(&iface, 0, sizeof(iface));
+                        Interface iface{};
 
                         iface.name = addr->AdapterName;
 
@@ -71,9 +76,9 @@ namespace util {
                         switch (iface.ip.sock.sa_family) {
                             case AF_INET: {
                                 // IPv4 address
-                                auto& ipv4      = *reinterpret_cast<sockaddr_in*>(&iface.ip);
-                                auto& netmask   = *reinterpret_cast<sockaddr_in*>(&iface.netmask);
-                                auto& broadcast = *reinterpret_cast<sockaddr_in*>(&iface.broadcast);
+                                auto& ipv4      = iface.ip.ipv4;
+                                auto& netmask   = iface.netmask.ipv4;
+                                auto& broadcast = iface.broadcast.ipv4;
 
                                 // Fill in the netmask
                                 netmask.sin_family = AF_INET;
@@ -95,8 +100,8 @@ namespace util {
                             } break;
                             case AF_INET6: {
                                 // IPv6 address
-                                auto& ipv6    = *reinterpret_cast<sockaddr_in6*>(&iface.ip);
-                                auto& netmask = *reinterpret_cast<sockaddr_in6*>(&iface.netmask);
+                                auto& ipv6    = iface.ip.ipv6;
+                                auto& netmask = iface.netmask.ipv6;
 
                                 // Fill in the netmask
                                 netmask.sin6_family = AF_INET6;
@@ -144,65 +149,48 @@ namespace util {
 
             std::vector<Interface> ifaces;
 
-            addrinfo hints;
-            std::memset(&hints, 0, sizeof(hints));
-            hints.ai_family = AF_INET;
-
             // Query our interfaces
-            ifaddrs* addrs;
+            ifaddrs* addrs{};
             if (::getifaddrs(&addrs) < 0) {
-                throw std::system_error(
-                    network_errno, std::system_category(), "Unable to query the interfaces on the platform");
+                throw std::system_error(network_errno,
+                                        std::system_category(),
+                                        "Unable to query the interfaces on the platform");
             }
 
             // Loop through our interfaces
-            for (ifaddrs* cursor = addrs; cursor != nullptr; cursor = cursor->ifa_next) {
+            for (ifaddrs* it = addrs; it != nullptr; it = it->ifa_next) {
 
                 // Sometimes we find an interface with no IP (like a CAN bus) this is not what we're after
-                if (cursor->ifa_addr) {
+                if (it->ifa_addr != nullptr) {
 
-                    Interface iface;
-                    iface.name = cursor->ifa_name;
+                    Interface iface{};
+                    iface.name = it->ifa_name;
 
                     // Copy across our various addresses
-                    switch (cursor->ifa_addr->sa_family) {
-                        case AF_INET: std::memcpy(&iface.ip, cursor->ifa_addr, sizeof(sockaddr_in)); break;
-
-                        case AF_INET6: std::memcpy(&iface.ip, cursor->ifa_addr, sizeof(sockaddr_in6)); break;
+                    switch (it->ifa_addr->sa_family) {
+                        case AF_INET: std::memcpy(&iface.ip, it->ifa_addr, sizeof(sockaddr_in)); break;
+                        case AF_INET6: std::memcpy(&iface.ip, it->ifa_addr, sizeof(sockaddr_in6)); break;
+                        default: continue;
                     }
 
-                    if (cursor->ifa_netmask != nullptr) {
-                        switch (cursor->ifa_addr->sa_family) {
-                            case AF_INET: std::memcpy(&iface.netmask, cursor->ifa_netmask, sizeof(sockaddr_in)); break;
-
-                            case AF_INET6:
-                                std::memcpy(&iface.netmask, cursor->ifa_netmask, sizeof(sockaddr_in6));
-                                break;
+                    if (it->ifa_netmask != nullptr) {
+                        switch (it->ifa_addr->sa_family) {
+                            case AF_INET: std::memcpy(&iface.netmask, it->ifa_netmask, sizeof(sockaddr_in)); break;
+                            case AF_INET6: std::memcpy(&iface.netmask, it->ifa_netmask, sizeof(sockaddr_in6)); break;
                         }
                     }
-                    else {
-                        std::memset(&iface.netmask, 0, sizeof(iface.netmask));
-                    }
 
-                    if (cursor->ifa_dstaddr != nullptr) {
-                        switch (cursor->ifa_addr->sa_family) {
-                            case AF_INET:
-                                std::memcpy(&iface.broadcast, cursor->ifa_dstaddr, sizeof(sockaddr_in));
-                                break;
-
-                            case AF_INET6:
-                                std::memcpy(&iface.broadcast, cursor->ifa_dstaddr, sizeof(sockaddr_in6));
-                                break;
+                    if (it->ifa_dstaddr != nullptr) {
+                        switch (it->ifa_addr->sa_family) {
+                            case AF_INET: std::memcpy(&iface.broadcast, it->ifa_dstaddr, sizeof(sockaddr_in)); break;
+                            case AF_INET6: std::memcpy(&iface.broadcast, it->ifa_dstaddr, sizeof(sockaddr_in6)); break;
                         }
                     }
-                    else {
-                        std::memset(&iface.broadcast, 0, sizeof(iface.broadcast));
-                    }
 
-                    iface.flags.broadcast    = (cursor->ifa_flags & IFF_BROADCAST) != 0;
-                    iface.flags.loopback     = (cursor->ifa_flags & IFF_LOOPBACK) != 0;
-                    iface.flags.pointtopoint = (cursor->ifa_flags & IFF_POINTOPOINT) != 0;
-                    iface.flags.multicast    = (cursor->ifa_flags & IFF_MULTICAST) != 0;
+                    iface.flags.broadcast    = (it->ifa_flags & IFF_BROADCAST) != 0;
+                    iface.flags.loopback     = (it->ifa_flags & IFF_LOOPBACK) != 0;
+                    iface.flags.pointtopoint = (it->ifa_flags & IFF_POINTOPOINT) != 0;
+                    iface.flags.multicast    = (it->ifa_flags & IFF_MULTICAST) != 0;
 
                     ifaces.push_back(iface);
                 }

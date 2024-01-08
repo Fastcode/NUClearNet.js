@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -18,39 +22,47 @@
 
 #include <catch.hpp>
 #include <nuclear>
+#include <sstream>
+
+#include "test_util/TestBase.hpp"
 
 namespace {
 
-struct ShutdownNowPlx {};
+// Events that occur during the test
+std::vector<std::string> events;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
-class TestReactor : public NUClear::Reactor {
+class TestReactor : public test_util::TestBase<TestReactor> {
+private:
+    using CommandLineArguments = NUClear::message::CommandLineArguments;
+
 public:
-    TestReactor(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)) {
-        on<Trigger<NUClear::message::CommandLineArguments>>().then(
-            [this](const NUClear::message::CommandLineArguments& args) {
-                REQUIRE(args[0] == "Hello");
-                REQUIRE(args[1] == "World");
+    TestReactor(std::unique_ptr<NUClear::Environment> environment) : TestBase(std::move(environment)) {
 
-                // We can't call shutdown here because
-                // we haven't started yet. That's because
-                // emits from Scope::INITIALIZE are not
-                // considered fully "initialized"
-                emit(std::make_unique<ShutdownNowPlx>());
-            });
-
-        on<Trigger<ShutdownNowPlx>>().then([this] { powerplant.shutdown(); });
+        on<Trigger<CommandLineArguments>>().then([](const CommandLineArguments& args) {
+            std::stringstream output;
+            for (const auto& arg : args) {
+                output << arg << " ";
+            }
+            events.push_back("CommandLineArguments: " + output.str());
+        });
     }
 };
 }  // namespace
 
 TEST_CASE("Testing the Command Line argument capturing", "[api][command_line_arguments]") {
-    int argc           = 2;
-    const char* argv[] = {"Hello", "World"};
-
-    NUClear::PowerPlant::Configuration config;
+    const int argc     = 2;
+    const char* argv[] = {"Hello", "World"};  // NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
+    NUClear::Configuration config;
     config.thread_count = 1;
-    NUClear::PowerPlant plant(config, argc, reinterpret_cast<const char**>(argv));
+    NUClear::PowerPlant plant(config, argc, argv);
     plant.install<TestReactor>();
-
     plant.start();
+
+    const std::vector<std::string> expected = {"CommandLineArguments: Hello World "};
+
+    // Make an info print the diff in an easy to read way if we fail
+    INFO(test_util::diff_string(expected, events));
+
+    // Check the events fired in order and only those events
+    REQUIRE(events == expected);
 }

@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2014 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -42,16 +46,18 @@ namespace dsl {
             static inline void bind(const std::shared_ptr<threading::Reaction>& reaction) {
 
                 // Our unbinder to remove this reaction
-                reaction->unbinders.push_back([](threading::Reaction& r) {
+                reaction->unbinders.push_back([](const threading::Reaction& r) {
                     auto& vec = store::TypeCallbackStore<DataType>::get();
 
-                    auto item = std::find_if(
-                        std::begin(vec), std::end(vec), [&r](const std::shared_ptr<threading::Reaction>& item) {
-                            return item->id == r.id;
-                        });
+                    auto it = std::find_if(
+                        std::begin(vec),
+                        std::end(vec),
+                        [&r](const std::shared_ptr<threading::Reaction>& item) { return item->id == r.id; });
 
                     // If the item is in the list erase the item
-                    if (item != std::end(vec)) { vec.erase(item); }
+                    if (it != std::end(vec)) {
+                        vec.erase(it);
+                    }
                 });
 
                 // Create our reaction and store it in the TypeCallbackStore
@@ -69,16 +75,18 @@ namespace dsl {
                 reaction->emit_stats = false;
 
                 // Our unbinder to remove this reaction
-                reaction->unbinders.push_back([](threading::Reaction& r) {
+                reaction->unbinders.push_back([](const threading::Reaction& r) {
                     auto& vec = store::TypeCallbackStore<message::ReactionStatistics>::get();
 
-                    auto item = std::find_if(
-                        std::begin(vec), std::end(vec), [&r](const std::shared_ptr<threading::Reaction>& item) {
-                            return item->id == r.id;
-                        });
+                    auto it = std::find_if(
+                        std::begin(vec),
+                        std::end(vec),
+                        [&r](const std::shared_ptr<threading::Reaction>& item) { return item->id == r.id; });
 
                     // If the item is in the list erase the item
-                    if (item != std::end(vec)) { vec.erase(item); }
+                    if (it != std::end(vec)) {
+                        vec.erase(it);
+                    }
                 });
 
                 // Create our reaction and store it in the TypeCallbackStore

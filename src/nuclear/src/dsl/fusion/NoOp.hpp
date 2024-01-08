@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2014 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,6 +23,12 @@
 #ifndef NUCLEAR_DSL_FUSION_NOOP_HPP
 #define NUCLEAR_DSL_FUSION_NOOP_HPP
 
+#include <typeindex>
+
+#include "../../threading/Reaction.hpp"
+#include "../../threading/ReactionTask.hpp"
+#include "../../util/GroupDescriptor.hpp"
+#include "../../util/ThreadPoolDescriptor.hpp"
 #include "../word/Priority.hpp"
 
 namespace NUClear {
@@ -32,31 +42,39 @@ namespace dsl {
         struct NoOp {
 
             template <typename DSL, typename... Args>
-            static inline void bind(const std::shared_ptr<threading::Reaction>&, Args...) {}
-
-            template <typename DSL>
-            static inline std::tuple<> get(threading::Reaction&) {
-                return std::tuple<>();
+            static inline void bind(const std::shared_ptr<threading::Reaction>& /*reaction*/, Args... /*args*/) {
+                // Empty as this is a no-op placeholder
             }
 
             template <typename DSL>
-            static inline bool precondition(threading::Reaction&) {
+            static inline std::tuple<> get(const threading::Reaction& /*reaction*/) {
+                return {};
+            }
+
+            template <typename DSL>
+            static inline bool precondition(const threading::Reaction& /*reaction*/) {
                 return true;
             }
 
             template <typename DSL>
-            static inline int priority(threading::Reaction&) {
+            static inline int priority(const threading::Reaction& /*reaction*/) {
                 return word::Priority::NORMAL::value;
             }
 
             template <typename DSL>
-            static inline std::unique_ptr<threading::ReactionTask> reschedule(
-                std::unique_ptr<threading::ReactionTask>&& task) {
-                return std::move(task);
+            static inline util::GroupDescriptor group(const threading::Reaction& /*reaction*/) {
+                return util::GroupDescriptor{};
             }
 
             template <typename DSL>
-            static inline void postcondition(threading::ReactionTask&) {}
+            static inline util::ThreadPoolDescriptor pool(const threading::Reaction& /*reaction*/) {
+                return util::ThreadPoolDescriptor{};
+            }
+
+            template <typename DSL>
+            static inline void postcondition(const threading::ReactionTask& /*task*/) {
+                // Empty as this is a no-op placeholder
+            }
         };
 
         /**
@@ -66,18 +84,19 @@ namespace dsl {
         struct ParsedNoOp {
             struct DSL {};
 
-            static inline std::tuple<> bind(const std::shared_ptr<threading::Reaction>&);
+            static std::tuple<> bind(const std::shared_ptr<threading::Reaction>&);
 
-            static inline std::tuple<> get(threading::Reaction&);
+            static std::tuple<> get(threading::Reaction&);
 
-            static inline bool precondition(threading::Reaction&);
+            static bool precondition(threading::Reaction&);
 
-            static inline int priority(threading::Reaction&);
+            static int priority(threading::Reaction&);
 
-            static inline std::unique_ptr<threading::ReactionTask> reschedule(
-                std::unique_ptr<threading::ReactionTask>&& task);
+            static util::GroupDescriptor group(threading::Reaction&);
 
-            static inline void postcondition(threading::ReactionTask&);
+            static util::ThreadPoolDescriptor pool(threading::Reaction&);
+
+            static void postcondition(threading::ReactionTask&);
         };
 
     }  // namespace fusion

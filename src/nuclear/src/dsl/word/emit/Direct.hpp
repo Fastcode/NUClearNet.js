@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2014 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -32,7 +36,7 @@ namespace dsl {
             /**
              * @brief
              *  When emitting data under this scope, the tasks created as a result of this emission will bypass the
-             *  threadpool, and be executed immediately.
+             *  thread pool, and be executed immediately.
              *
              * @details
              *  @code emit<Scope::DIRECT>(data, dataType); @endcode
@@ -56,24 +60,9 @@ namespace dsl {
 
                     // Run all our reactions that are interested
                     for (auto& reaction : store::TypeCallbackStore<DataType>::get()) {
-                        try {
-
-                            // Set our thread local store data each time (as during direct it can be overwritten)
-                            store::ThreadStore<std::shared_ptr<DataType>>::value = &data;
-
-                            auto task = reaction->get_task();
-                            if (task) {
-                                task = task->run(std::move(task));
-                            }
-                        }
-                        catch (const std::exception& ex) {
-                            powerplant.log<NUClear::ERROR>("There was an exception while generating a reaction",
-                                                           ex.what());
-                        }
-                        catch (...) {
-                            powerplant.log<NUClear::ERROR>(
-                                "There was an unknown exception while generating a reaction");
-                        }
+                        // Set our thread local store data each time (as during direct it can be overwritten)
+                        store::ThreadStore<std::shared_ptr<DataType>>::value = &data;
+                        powerplant.submit(reaction->get_task(), true);
                     }
 
                     // Unset our thread local store data

@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -50,13 +54,19 @@ namespace threading {
          * @param
          *  context the reaction that we are interacting with.
          */
-        ReactionHandle(const std::shared_ptr<Reaction>& context = nullptr);
+        explicit ReactionHandle(const std::shared_ptr<Reaction>& context = nullptr) : context(context) {}
 
         /**
          * @brief
          *  Enables the reaction so that associated tasks will be scheduled and queued when the reaction is triggered.
          */
-        ReactionHandle& enable();
+        inline ReactionHandle& enable() {
+            auto c = context.lock();
+            if (c) {
+                c->enabled = true;
+            }
+            return *this;
+        }
 
         /**
          * @brief
@@ -65,7 +75,13 @@ namespace threading {
          *  available, so that the reaction can be enabled when required.
          *  Note that a reaction which has been bound by an on<Always> request should not be disabled.
          */
-        ReactionHandle& disable();
+        inline ReactionHandle& disable() {
+            auto c = context.lock();
+            if (c) {
+                c->enabled = false;
+            }
+            return *this;
+        }
 
         /**
          * @brief
@@ -73,7 +89,13 @@ namespace threading {
          * @param set
          *  true for enable, false for disable
          */
-        ReactionHandle& enable(bool set);
+        inline ReactionHandle& enable(const bool& set) {
+            auto c = context.lock();
+            if (c) {
+                c->enabled = set;
+            }
+            return *this;
+        }
 
         /**
          * @brief
@@ -82,7 +104,10 @@ namespace threading {
          * @return
          *  true if enabled, false if disabled
          */
-        bool enabled();
+        inline bool enabled() const {
+            auto c = context.lock();
+            return c ? bool(c->enabled) : false;
+        }
 
         /**
          * @brief
@@ -91,7 +116,13 @@ namespace threading {
          *  This is most commonly used for the unbinding of network configuration before attempting to re-set
          *  configuration details during runtime.
          */
-        void unbind();
+        // NOLINTNEXTLINE(readability-make-member-function-const) unbinding modifies the reaction
+        inline void unbind() {
+            auto c = context.lock();
+            if (c) {
+                c->unbind();
+            }
+        }
 
         /**
          * @brief
@@ -100,7 +131,9 @@ namespace threading {
          * @return
          *  true if the reaction held in this is not a nullptr
          */
-        operator bool() const;
+        inline operator bool() const {
+            return bool(context.lock());
+        }
     };
 
 }  // namespace threading

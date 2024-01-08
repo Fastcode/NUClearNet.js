@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,6 +23,8 @@
 #ifndef NUCLEAR_DSL_WORD_IO_HPP
 #define NUCLEAR_DSL_WORD_IO_HPP
 
+#include "../../id.hpp"
+#include "../../threading/Reaction.hpp"
 #include "../../util/platform.hpp"
 #include "../operation/Unbind.hpp"
 #include "../store/ThreadStore.hpp"
@@ -30,10 +36,33 @@ namespace NUClear {
 namespace dsl {
     namespace word {
 
+#ifdef _WIN32
+        using event_t = long;  // NOLINT(google-runtime-int)
+#else
+        using event_t = short;  // NOLINT(google-runtime-int)
+#endif
+
+        /**
+         * @brief This message is sent to the IO controller to configure a new IO operation.
+         */
         struct IOConfiguration {
+            IOConfiguration(fd_t fd, event_t events, std::shared_ptr<threading::Reaction> reaction)
+                : fd(fd), events(events), reaction(std::move(reaction)) {}
+            /// @brief The file descriptor to watch
             fd_t fd;
-            int events;
+            /// @brief The events to watch for on this file descriptor
+            event_t events;
+            /// @brief The reaction to trigger when this file descriptor has an event
             std::shared_ptr<threading::Reaction> reaction;
+        };
+
+        /**
+         * @brief This is emitted when an IO operation has finished.
+         */
+        struct IOFinished {
+            explicit IOFinished(const NUClear::id_t& id) : id(id) {}
+            /// @brief The id of the reaction that has finished
+            NUClear::id_t id;
         };
 
         /**
@@ -67,50 +96,69 @@ namespace dsl {
          * @par Implements
          *  Bind
          */
-        struct IO : public Single {
+        struct IO {
 
 // On windows we use different wait events
 #ifdef _WIN32
-            enum EventType : short{READ = FD_READ | FD_OOB | FD_ACCEPT, WRITE = FD_WRITE, CLOSE = FD_CLOSE, ERROR = 0};
+            // NOLINTNEXTLINE(google-runtime-int)
+            enum EventType : event_t {
+                READ  = FD_READ | FD_OOB | FD_ACCEPT,
+                WRITE = FD_WRITE,
+                CLOSE = FD_CLOSE,
+                ERROR = 0,
+            };
 #else
-            enum EventType : short { READ = POLLIN, WRITE = POLLOUT, CLOSE = POLLHUP, ERROR = POLLNVAL | POLLERR };
+            // NOLINTNEXTLINE(google-runtime-int)
+            enum EventType : event_t {
+                READ  = POLLIN,
+                WRITE = POLLOUT,
+                CLOSE = POLLHUP,
+                ERROR = POLLNVAL | POLLERR,
+            };
 #endif
 
             struct Event {
+                /// @brief The file descriptor that this event is for
                 fd_t fd;
-                int events;
+                /// @brief The events that have occurred on this file descriptor
+                event_t events;
 
+                /// @brief Returns true if the event is for the given event type
                 operator bool() const {
-                    return fd != -1;
+                    return fd != INVALID_SOCKET;
                 }
             };
 
             using ThreadEventStore = dsl::store::ThreadStore<Event>;
 
             template <typename DSL>
-            static inline void bind(const std::shared_ptr<threading::Reaction>& reaction, fd_t fd, int watch_set) {
+            static inline void bind(const std::shared_ptr<threading::Reaction>& reaction, fd_t fd, event_t watch_set) {
 
                 reaction->unbinders.push_back([](const threading::Reaction& r) {
                     r.reactor.emit<emit::Direct>(std::make_unique<operation::Unbind<IO>>(r.id));
                 });
 
-                auto io_config = std::make_unique<IOConfiguration>(IOConfiguration{fd, watch_set, reaction});
+                auto io_config = std::make_unique<IOConfiguration>(fd, watch_set, reaction);
 
                 // Send our configuration out
                 reaction->reactor.emit<emit::Direct>(io_config);
             }
 
             template <typename DSL>
-            static inline Event get(threading::Reaction&) {
+            static inline Event get(const threading::Reaction& /*reaction*/) {
 
                 // If our thread store has a value
                 if (ThreadEventStore::value) {
                     return *ThreadEventStore::value;
                 }
+
                 // Otherwise return an invalid event
-                else {
-                    return Event{INVALID_SOCKET, 0};
-                }
+                return Event{INVALID_SOCKET, 0};
+            }
+
+            template <typename DSL>
+            static inline void postcondition(threading::ReactionTask& task) {
+                task.parent.reactor.emit<emit::Direct>(std::make_unique<IOFinished>(task.parent.id));
             }
         };
 

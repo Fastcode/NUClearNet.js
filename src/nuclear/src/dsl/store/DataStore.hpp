@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2014 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -34,7 +38,7 @@ namespace dsl {
          *          typed datastore. This allows constant time access to any datatype without having to look it up.
          *          This is possible as the exact location of the store is known at compile time.
          *
-         * @tparam DataType the type of data stored in this paticular datastore location
+         * @tparam DataType the type of data stored in this particular datastore location
          */
         template <typename DataType>
         using DataStore = util::TypeMap<DataType, DataType, DataType>;

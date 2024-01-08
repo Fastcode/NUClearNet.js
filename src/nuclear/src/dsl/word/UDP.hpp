@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,9 +23,15 @@
 #ifndef NUCLEAR_DSL_WORD_UDP_HPP
 #define NUCLEAR_DSL_WORD_UDP_HPP
 
+#include <array>
+#include <stdexcept>
+
 #include "../../PowerPlant.hpp"
+#include "../../threading/Reaction.hpp"
 #include "../../util/FileDescriptor.hpp"
 #include "../../util/network/get_interfaces.hpp"
+#include "../../util/network/if_number_from_address.hpp"
+#include "../../util/network/resolve.hpp"
 #include "../../util/platform.hpp"
 #include "IO.hpp"
 
@@ -40,55 +50,84 @@ namespace dsl {
          *  request for a UDP based reaction can use a runtime argument to reference a specific port.  Note that the
          *  port reference can be changed during the systems execution phase.
          *
+         * @code on<UDP>(port, bind_address) @endcode
+         *  The `bind_address` parameter can be used to specify which interface to bind on. If `bind_address` is an
+         * empty string, the system will bind to any available interface.
+         *
          *  @code on<UDP>() @endcode
          *  Should the port reference be omitted, then the system will bind to a currently unassigned port.
-         *
-         *  @code on<UDP, UDP>(port, port)  @endcode
-         *  A reaction can also be triggered via activity on more than one port.
          *
          *  @code on<UDP:Broadcast>(port)
          *  on<UDP:Multicast>(multicast_address, port) @endcode
          *  If needed, this trigger can also listen for UDP activity such as broadcast and multicast.
          *
-         *  These requests currently support IPv4 addressing.
+         *  These requests support both IPv4 and IPv6 addressing.
          *
          * @par Implements
          *  Bind
          */
-        struct UDP {
+        struct UDP : public IO {
+        private:
+            /**
+             * @brief This structure is used to configure the UDP connection
+             */
+            struct ConnectOptions {
+                /// @brief The type of connection we are making
+                enum class Type { UNICAST, BROADCAST, MULTICAST };
+                /// @brief The type of connection we are making
+                Type type{};
+                /// @brief The address we are binding to or empty for any
+                std::string bind_address{};
+                /// @brief The port we are binding to or 0 for any
+                in_port_t port = 0;
+                /// @brief The multicast address we are listening on or empty for any
+                std::string target_address{};
+            };
 
+            /**
+             * @brief This structure is used to return the result of a recvmsg call
+             */
+            struct RecvResult {
+                /// @brief If the packet is valid
+                bool valid{false};
+                /// @brief The data that was received
+                std::vector<uint8_t> payload{};
+                /// @brief The local address that the packet was received on
+                util::network::sock_t local{};
+                /// @brief The remote address that the packet was received from
+                util::network::sock_t remote{};
+            };
+
+        public:
             struct Packet {
-                Packet() : valid(false), remote(), local(), payload() {}
+                Packet() = default;
 
-                /// If the packet is valid (it contains data)
-                bool valid;
+                /// @brief If the packet is valid (it contains data)
+                bool valid{false};
 
-                /// The information about this packet's source
-                struct Remote {
-                    Remote() : address(0), port(0) {}
-                    Remote(uint32_t addr, uint16_t port) : address(addr), port(port) {}
+                struct Target {
+                    Target() = default;
+                    Target(std::string address, const uint16_t& port) : address(std::move(address)), port(port) {}
 
-                    /// The address that the packet is from
-                    uint32_t address;
-                    /// The port that the packet is from
-                    uint16_t port;
-                } remote;
+                    /// @brief The address of the target
+                    std::string address{};
+                    /// @brief The port of the target
+                    uint16_t port{0};
+                };
 
-                /// The information about this packet's destination
-                struct Local {
-                    Local() : address(0), port(0) {}
-                    Local(uint32_t addr, uint16_t port) : address(addr), port(port) {}
+                /// @brief The information about this packets destination
+                Target local;
+                /// @brief The information about this packets source
+                Target remote;
 
-                    /// The address that the packet is to
-                    uint32_t address;
-                    /// The port that the packet is to
-                    uint16_t port;
-                } local;
+                /// @brief The data to be sent in the packet
+                std::vector<uint8_t> payload{};
 
-                /// The data to be sent in the packet
-                std::vector<char> payload;
-
-                /// Our validator when returned for if we are a real packet
+                /**
+                 * @brief Casts this packet to a boolean to check if it is valid
+                 *
+                 * @return true if the packet is valid
+                 */
                 operator bool() const {
                     return valid;
                 }
@@ -102,319 +141,403 @@ namespace dsl {
             };
 
             template <typename DSL>
-            static inline std::tuple<in_port_t, fd_t> bind(const std::shared_ptr<threading::Reaction>& reaction,
-                                                           in_port_t port = 0) {
+            static inline std::tuple<in_port_t, fd_t> connect(const std::shared_ptr<threading::Reaction>& reaction,
+                                                              const ConnectOptions& options) {
+
+                // Resolve the addresses
+                util::network::sock_t bind_address{};
+                util::network::sock_t multicast_target{};
+                if (options.type == ConnectOptions::Type::MULTICAST) {
+                    multicast_target = util::network::resolve(options.target_address, options.port);
+
+                    // If there is no bind address, make sure we bind to an address of the same family
+                    if (options.bind_address.empty()) {
+                        bind_address = multicast_target;
+                        switch (bind_address.sock.sa_family) {
+                            case AF_INET: {
+                                bind_address.ipv4.sin_port        = htons(options.port);
+                                bind_address.ipv4.sin_addr.s_addr = htonl(INADDR_ANY);
+                            } break;
+                            case AF_INET6: {
+                                bind_address.ipv6.sin6_port = htons(options.port);
+                                bind_address.ipv6.sin6_addr = in6addr_any;
+                            } break;
+                            default: throw std::invalid_argument("Unknown socket family");
+                        }
+                    }
+                    else {
+                        bind_address = util::network::resolve(options.bind_address, options.port);
+                        if (multicast_target.sock.sa_family != bind_address.sock.sa_family) {
+                            throw std::invalid_argument("Multicast address family does not match bind address family");
+                        }
+                    }
+                }
+                else {
+                    if (options.bind_address.empty()) {
+                        bind_address.ipv4.sin_family      = AF_INET;
+                        bind_address.ipv4.sin_port        = htons(options.port);
+                        bind_address.ipv4.sin_addr.s_addr = htonl(INADDR_ANY);
+                    }
+                    else {
+                        bind_address = util::network::resolve(options.bind_address, options.port);
+                    }
+                }
 
                 // Make our socket
-                util::FileDescriptor fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-                if (fd < 0) {
-                    throw std::system_error(
-                        network_errno, std::system_category(), "We were unable to open the UDP socket");
+                util::FileDescriptor fd = ::socket(bind_address.sock.sa_family, SOCK_DGRAM, IPPROTO_UDP);
+                if (!fd.valid()) {
+                    throw std::system_error(network_errno, std::system_category(), "Unable to open the UDP socket");
                 }
 
-                // The address we will be binding to
-                sockaddr_in address;
-                memset(&address, 0, sizeof(sockaddr_in));
-                address.sin_family      = AF_INET;
-                address.sin_port        = htons(port);
-                address.sin_addr.s_addr = htonl(INADDR_ANY);
-
-                // Bind to the address, and if we fail throw an error
-                if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(sockaddr))) {
-                    throw std::system_error(
-                        network_errno, std::system_category(), "We were unable to bind the UDP socket to the port");
-                }
-
+                // Include struct in the message "ancillary" control data
                 int yes = 1;
-                // Include struct in_pktinfo in the message "ancilliary" control data
-                if (setsockopt(fd, IPPROTO_IP, IP_PKTINFO, reinterpret_cast<const char*>(&yes), sizeof(yes)) < 0) {
-                    throw std::system_error(network_errno,
-                                            std::system_category(),
-                                            "We were unable to flag the socket as getting ancillary data");
+                if (bind_address.sock.sa_family == AF_INET) {
+                    if (::setsockopt(fd, IPPROTO_IP, IP_PKTINFO, reinterpret_cast<const char*>(&yes), sizeof(yes))
+                        < 0) {
+                        throw std::system_error(network_errno,
+                                                std::system_category(),
+                                                "Unable to flag the socket as getting ancillary data");
+                    }
+                }
+                else if (bind_address.sock.sa_family == AF_INET6) {
+                    if (::setsockopt(fd,
+                                     IPPROTO_IPV6,
+                                     IPV6_RECVPKTINFO,
+                                     reinterpret_cast<const char*>(&yes),
+                                     sizeof(yes))
+                        < 0) {
+                        throw std::system_error(network_errno,
+                                                std::system_category(),
+                                                "Unable to flag the socket as getting ancillary data");
+                    }
+                }
+
+                // Broadcast and multicast reuse address and port
+                if (options.type == ConnectOptions::Type::BROADCAST
+                    || options.type == ConnectOptions::Type::MULTICAST) {
+
+                    if (::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
+                        throw std::system_error(network_errno,
+                                                std::system_category(),
+                                                "Unable to reuse address on the socket");
+                    }
+
+// If SO_REUSEPORT is available set it too
+#ifdef SO_REUSEPORT
+                    if (::setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
+                        throw std::system_error(network_errno,
+                                                std::system_category(),
+                                                "Unable to reuse port on the socket");
+                    }
+#endif
+
+                    // We enable SO_BROADCAST since sometimes we need to send broadcast packets
+                    if (::setsockopt(fd, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
+                        throw std::system_error(network_errno,
+                                                std::system_category(),
+                                                "Unable to set broadcast on the socket");
+                    }
+                }
+
+                // Bind to the address
+                if (::bind(fd, &bind_address.sock, bind_address.size()) != 0) {
+                    throw std::system_error(network_errno, std::system_category(), "Unable to bind the UDP socket");
+                }
+
+                // If we have a multicast address, then we need to join the multicast groups
+                if (options.type == ConnectOptions::Type::MULTICAST) {
+
+                    // Our multicast join request will depend on protocol version
+                    if (multicast_target.sock.sa_family == AF_INET) {
+
+                        // Set the multicast address we are listening on and bind address
+                        ip_mreq mreq{};
+                        mreq.imr_multiaddr = multicast_target.ipv4.sin_addr;
+                        mreq.imr_interface = bind_address.ipv4.sin_addr;
+
+                        // Join our multicast group
+                        if (::setsockopt(fd,
+                                         IPPROTO_IP,
+                                         IP_ADD_MEMBERSHIP,
+                                         reinterpret_cast<char*>(&mreq),
+                                         sizeof(ip_mreq))
+                            < 0) {
+                            throw std::system_error(network_errno,
+                                                    std::system_category(),
+                                                    "There was an error while attempting to join the multicast group");
+                        }
+
+                        // Set our transmission interface for the multicast socket
+                        if (::setsockopt(fd,
+                                         IPPROTO_IP,
+                                         IP_MULTICAST_IF,
+                                         reinterpret_cast<const char*>(&bind_address.ipv4.sin_addr),
+                                         sizeof(bind_address.ipv4.sin_addr))
+                            < 0) {
+                            throw std::system_error(network_errno,
+                                                    std::system_category(),
+                                                    "Unable to use the requested interface for multicast");
+                        }
+                    }
+                    else if (multicast_target.sock.sa_family == AF_INET6) {
+
+                        // Set the multicast address we are listening on
+                        ipv6_mreq mreq{};
+                        mreq.ipv6mr_multiaddr = multicast_target.ipv6.sin6_addr;
+                        mreq.ipv6mr_interface = util::network::if_number_from_address(bind_address.ipv6);
+
+                        // Join our multicast group
+                        if (::setsockopt(fd,
+                                         IPPROTO_IPV6,
+                                         IPV6_JOIN_GROUP,
+                                         reinterpret_cast<char*>(&mreq),
+                                         sizeof(ipv6_mreq))
+                            < 0) {
+                            throw std::system_error(network_errno,
+                                                    std::system_category(),
+                                                    "There was an error while attempting to join the multicast group");
+                        }
+
+                        // Set our transmission interface for the multicast socket
+                        if (::setsockopt(fd,
+                                         IPPROTO_IPV6,
+                                         IPV6_MULTICAST_IF,
+                                         reinterpret_cast<const char*>(&mreq.ipv6mr_interface),
+                                         sizeof(mreq.ipv6mr_interface))
+                            < 0) {
+                            throw std::system_error(network_errno,
+                                                    std::system_category(),
+                                                    "Unable to use the requested interface for multicast");
+                        }
+                    }
                 }
 
                 // Get the port we ended up listening on
-                socklen_t len = sizeof(sockaddr_in);
-                if (::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &len) == -1) {
-                    throw std::system_error(
-                        network_errno, std::system_category(), "We were unable to get the port from the UDP socket");
+                socklen_t len = sizeof(bind_address);
+                if (::getsockname(fd, &bind_address.sock, &len) == -1) {
+                    throw std::system_error(network_errno,
+                                            std::system_category(),
+                                            "Unable to get the port from the UDP socket");
                 }
-                port = ntohs(address.sin_port);
+                in_port_t port = 0;
+                if (bind_address.sock.sa_family == AF_INET) {
+                    port = ntohs(bind_address.ipv4.sin_port);
+                }
+                else if (bind_address.sock.sa_family == AF_INET6) {
+                    port = ntohs(bind_address.ipv6.sin6_port);
+                }
+                else {
+                    throw std::invalid_argument("Unknown socket family");
+                }
 
                 // Generate a reaction for the IO system that closes on death
-                fd_t cfd = fd;
-                reaction->unbinders.push_back([](const threading::Reaction& r) {
-                    r.reactor.emit<emit::Direct>(std::make_unique<operation::Unbind<IO>>(r.id));
-                });
-                reaction->unbinders.push_back([cfd](const threading::Reaction&) { close(cfd); });
-
-                auto io_config =
-                    std::make_unique<IOConfiguration>(IOConfiguration{fd.release(), IO::READ, std::move(reaction)});
-
-                // Send our configuration out
-                reaction->reactor.emit<emit::Direct>(io_config);
+                const fd_t cfd = fd.release();
+                reaction->unbinders.push_back([cfd](const threading::Reaction&) { ::close(cfd); });
+                IO::bind<DSL>(reaction, cfd, IO::READ | IO::CLOSE);
 
                 // Return our handles and our bound port
                 return std::make_tuple(port, cfd);
             }
 
             template <typename DSL>
-            static inline Packet get(threading::Reaction& r) {
-
-                // Get our filedescriptor from the magic cache
-                auto event = IO::get<DSL>(r);
+            static inline RecvResult read(threading::Reaction& reaction) {
+                // Get our file descriptor from the magic cache
+                auto event = IO::get<DSL>(reaction);
 
                 // If our get is being run without an fd (something else triggered) then short circuit
-                if (event.fd == 0) {
-                    Packet p;
-                    p.remote.address = INADDR_NONE;
-                    p.remote.port    = 0;
-                    p.local.address  = INADDR_NONE;
-                    p.local.port     = 0;
-                    p.valid          = false;
-                    return p;
+                if (!event) {
+                    return {};
                 }
 
-                // Make a packet with 2k of storage (hopefully packets are smaller then this as most MTUs are around
-                // 1500)
-                Packet p;
-                p.remote.address = INADDR_NONE;
-                p.remote.port    = 0;
-                p.local.address  = INADDR_NONE;
-                p.local.port     = 0;
-                p.valid          = false;
-                p.payload.resize(2048);
+                // Allocate max size for a UDP packet
+                std::vector<uint8_t> buffer(65535, 0);
 
                 // Make some variables to hold our message header information
-                char cmbuff[0x100] = {0};
-                sockaddr_in from;
-                memset(&from, 0, sizeof(sockaddr_in));
-                iovec payload;
-                payload.iov_base = p.payload.data();
-                payload.iov_len  = static_cast<decltype(payload.iov_len)>(p.payload.size());
+                std::array<char, 0x100> cmbuff = {0};
+                util::network::sock_t remote{};
+                iovec payload{};
+                payload.iov_base = reinterpret_cast<char*>(buffer.data());
+                payload.iov_len  = static_cast<decltype(payload.iov_len)>(buffer.size());
 
                 // Make our message header to receive with
-                msghdr mh;
-                memset(&mh, 0, sizeof(msghdr));
-                mh.msg_name       = reinterpret_cast<sockaddr*>(&from);
-                mh.msg_namelen    = sizeof(sockaddr_in);
-                mh.msg_control    = cmbuff;
-                mh.msg_controllen = sizeof(cmbuff);
+                msghdr mh{};
+                mh.msg_name       = &remote.sock;
+                mh.msg_namelen    = sizeof(util::network::sock_t);
+                mh.msg_control    = cmbuff.data();
+                mh.msg_controllen = cmbuff.size();
                 mh.msg_iov        = &payload;
                 mh.msg_iovlen     = 1;
 
                 // Receive our message
                 ssize_t received = recvmsg(event.fd, &mh, 0);
+                if (received < 0) {
+                    return {};
+                }
+
+                buffer.resize(received);
+                buffer.shrink_to_fit();
+
+                // Load the socket we are listening on
+                util::network::sock_t local{};
+                socklen_t len = sizeof(util::network::sock_t);
+                if (::getsockname(event.fd, &local.sock, &len) == -1) {
+                    throw std::system_error(network_errno,
+                                            std::system_category(),
+                                            "Unable to get the port from the UDP socket");
+                }
 
                 // Iterate through control headers to get IP information
-                in_addr_t our_addr = 0;
                 for (cmsghdr* cmsg = CMSG_FIRSTHDR(&mh); cmsg != nullptr; cmsg = CMSG_NXTHDR(&mh, cmsg)) {
-                    // ignore the control headers that don't match what we want
-                    if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO) {
+                    // If we find an ipv4 packet info header
+                    if (local.sock.sa_family == AF_INET && cmsg->cmsg_level == IPPROTO_IP
+                        && cmsg->cmsg_type == IP_PKTINFO) {
 
                         // Access the packet header information
-                        in_pktinfo* pi = reinterpret_cast<in_pktinfo*>(reinterpret_cast<char*>(cmsg) + sizeof(*cmsg));
-                        our_addr       = pi->ipi_addr.s_addr;
+                        const auto* pi = reinterpret_cast<in_pktinfo*>(reinterpret_cast<char*>(cmsg) + sizeof(*cmsg));
+                        local.ipv4.sin_family = AF_INET;
+                        local.ipv4.sin_addr   = pi->ipi_addr;
+
+                        // We are done
+                        break;
+                    }
+
+                    // If we find a ipv6 packet info header
+                    if (local.sock.sa_family == AF_INET6 && cmsg->cmsg_level == IPPROTO_IPV6
+                        && cmsg->cmsg_type == IPV6_PKTINFO) {
+
+                        // Access the packet header information
+                        const auto* pi = reinterpret_cast<in6_pktinfo*>(reinterpret_cast<char*>(cmsg) + sizeof(*cmsg));
+                        local.ipv6.sin6_addr = pi->ipi6_addr;
 
                         // We are done
                         break;
                     }
                 }
 
-                // Get the port this socket is listening on
-                socklen_t len = sizeof(sockaddr_in);
-                sockaddr_in address;
-                if (::getsockname(event.fd, reinterpret_cast<sockaddr*>(&address), &len) == -1) {
-                    throw std::system_error(
-                        network_errno, std::system_category(), "We were unable to get the port from the UDP socket");
-                }
-
-                // if no error
-                if (received > 0) {
-                    p.valid          = true;
-                    p.remote.address = ntohl(from.sin_addr.s_addr);
-                    p.remote.port    = ntohs(from.sin_port);
-                    p.local.address  = ntohl(our_addr);
-                    p.local.port     = ntohs(address.sin_port);
-                    p.payload.resize(size_t(received));
-                }
-
-                return p;
+                return RecvResult{true, buffer, local, remote};
             }
 
-            struct Broadcast {
+            template <typename DSL>
+            static inline std::tuple<in_port_t, fd_t> bind(const std::shared_ptr<threading::Reaction>& reaction,
+                                                           const in_port_t& port           = 0,
+                                                           const std::string& bind_address = "") {
+                return connect<DSL>(reaction, ConnectOptions{ConnectOptions::Type::UNICAST, bind_address, port, ""});
+            }
+
+            template <typename DSL>
+            static inline Packet get(threading::Reaction& reaction) {
+                RecvResult result = read<DSL>(reaction);
+
+                Packet p{};
+                p.valid       = result.valid;
+                p.payload     = std::move(result.payload);
+                auto local_s  = result.local.address();
+                auto remote_s = result.remote.address();
+                p.local       = Packet::Target{local_s.first, local_s.second};
+                p.remote      = Packet::Target{remote_s.first, remote_s.second};
+
+                // Confirm that this packet was sent to one of our local addresses
+                for (const auto& iface : util::network::get_interfaces()) {
+                    if (iface.ip.sock.sa_family == result.local.sock.sa_family) {
+                        // If the two are equal
+                        if (iface.ip.sock.sa_family == AF_INET) {
+                            if (iface.ip.ipv4.sin_addr.s_addr == result.local.ipv4.sin_addr.s_addr) {
+                                return p;
+                            }
+                        }
+                        else if (iface.ip.sock.sa_family == AF_INET6) {
+                            if (std::memcmp(&iface.ip.ipv6.sin6_addr,
+                                            &result.local.ipv6.sin6_addr,
+                                            sizeof(result.local.ipv6.sin6_addr))
+                                == 0) {
+                                return p;
+                            }
+                        }
+                    }
+                }
+
+                return {};
+            }
+
+            struct Broadcast : public IO {
 
                 template <typename DSL>
                 static inline std::tuple<in_port_t, fd_t> bind(const std::shared_ptr<threading::Reaction>& reaction,
-                                                               in_port_t port = 0) {
-
-                    // Make our socket
-                    util::FileDescriptor fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-                    if (fd < 0) {
-                        throw std::system_error(
-                            network_errno, std::system_category(), "We were unable to open the UDP Broadcast socket");
-                    }
-
-                    // The address we will be binding to
-                    sockaddr_in address;
-                    memset(&address, 0, sizeof(sockaddr_in));
-                    address.sin_family      = AF_INET;
-                    address.sin_port        = htons(port);
-                    address.sin_addr.s_addr = htonl(INADDR_ANY);
-
-                    int yes = true;
-                    // We are a broadcast socket
-                    if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
-                        throw std::system_error(
-                            network_errno, std::system_category(), "We were unable to set the socket as broadcast");
-                    }
-                    // Set that we reuse the address so more than one application can bind
-                    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
-                        throw std::system_error(
-                            network_errno, std::system_category(), "We were unable to set reuse address on the socket");
-                    }
-                    // Include struct in_pktinfo in the message "ancilliary" control data
-                    if (setsockopt(fd, IPPROTO_IP, IP_PKTINFO, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
-                        throw std::system_error(network_errno,
-                                                std::system_category(),
-                                                "We were unable to flag the socket as getting ancillary data");
-                    }
-
-                    // Bind to the address, and if we fail throw an error
-                    if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(sockaddr))) {
-                        throw std::system_error(
-                            network_errno, std::system_category(), "We were unable to bind the UDP socket to the port");
-                    }
-
-                    // Get the port we ended up listening on
-                    socklen_t len = sizeof(sockaddr_in);
-                    if (::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &len) == -1) {
-                        throw std::system_error(network_errno,
-                                                std::system_category(),
-                                                "We were unable to get the port from the UDP socket");
-                    }
-                    port = ntohs(address.sin_port);
-
-                    // Generate a reaction for the IO system that closes on death
-                    fd_t cfd = fd;
-                    reaction->unbinders.push_back([](const threading::Reaction& r) {
-                        r.reactor.emit<emit::Direct>(std::make_unique<operation::Unbind<IO>>(r.id));
-                    });
-                    reaction->unbinders.push_back([cfd](const threading::Reaction&) { close(cfd); });
-
-                    auto io_config =
-                        std::make_unique<IOConfiguration>(IOConfiguration{fd.release(), IO::READ, std::move(reaction)});
-
-                    // Send our configuration out
-                    reaction->reactor.emit<emit::Direct>(io_config);
-
-                    // Return our handles and our bound port
-                    return std::make_tuple(port, cfd);
+                                                               const in_port_t& port           = 0,
+                                                               const std::string& bind_address = "") {
+                    return UDP::connect<DSL>(reaction,
+                                             ConnectOptions{ConnectOptions::Type::BROADCAST, bind_address, port, ""});
                 }
 
                 template <typename DSL>
-                static inline Packet get(threading::Reaction& r) {
-                    return UDP::get<DSL>(r);
+                static inline Packet get(threading::Reaction& reaction) {
+                    RecvResult result = read<DSL>(reaction);
+
+                    // Broadcast is only IPv4
+                    if (result.local.sock.sa_family == AF_INET) {
+
+                        Packet p{};
+                        p.valid       = result.valid;
+                        p.payload     = std::move(result.payload);
+                        auto local_s  = result.local.address();
+                        auto remote_s = result.remote.address();
+                        p.local       = Packet::Target{local_s.first, local_s.second};
+                        p.remote      = Packet::Target{remote_s.first, remote_s.second};
+
+                        // 255.255.255.255 is always a valid broadcast address
+                        if (result.local.ipv4.sin_addr.s_addr == htonl(INADDR_BROADCAST)) {
+                            return p;
+                        }
+
+                        // Confirm that this packet was sent to one of our broadcast addresses
+                        for (const auto& iface : util::network::get_interfaces()) {
+                            if (iface.broadcast.sock.sa_family == AF_INET) {
+                                if (iface.flags.broadcast
+                                    && iface.broadcast.ipv4.sin_addr.s_addr == result.local.ipv4.sin_addr.s_addr) {
+                                    return p;
+                                }
+                            }
+                        }
+                    }
+
+                    return {};
                 }
             };
 
-            struct Multicast {
+            struct Multicast : public IO {
 
                 template <typename DSL>
                 static inline std::tuple<in_port_t, fd_t> bind(const std::shared_ptr<threading::Reaction>& reaction,
-                                                               std::string multicast_group,
-                                                               in_port_t port = 0) {
-
-                    // Our multicast group address
-                    sockaddr_in address;
-                    std::memset(&address, 0, sizeof(address));
-                    address.sin_family      = AF_INET;
-                    address.sin_addr.s_addr = INADDR_ANY;
-                    address.sin_port        = htons(port);
-
-                    // Make our socket
-                    util::FileDescriptor fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-                    if (fd < 0) {
-                        throw std::system_error(
-                            network_errno, std::system_category(), "We were unable to open the UDP socket");
-                    }
-
-                    int yes = true;
-                    // Set that we reuse the address so more than one application can bind
-                    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
-                        throw std::system_error(
-                            network_errno, std::system_category(), "We were unable to set reuse address on the socket");
-                    }
-                    // Include struct in_pktinfo in the message "ancilliary" control data
-                    if (setsockopt(fd, IPPROTO_IP, IP_PKTINFO, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
-                        throw std::system_error(network_errno,
-                                                std::system_category(),
-                                                "We were unable to flag the socket as getting ancillary data");
-                    }
-
-                    // Bind to the address
-                    if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(sockaddr))) {
-                        throw std::system_error(
-                            network_errno, std::system_category(), "We were unable to bind the UDP socket to the port");
-                    }
-
-                    // Store the port variable that was used
-                    socklen_t len = sizeof(sockaddr_in);
-                    if (::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &len) == -1) {
-                        throw std::system_error(network_errno,
-                                                std::system_category(),
-                                                "We were unable to get the port from the UDP socket");
-                    }
-                    port = ntohs(address.sin_port);
-
-                    // Get all the network interfaces that support multicast
-                    std::vector<uint32_t> addresses;
-                    for (auto& iface : util::network::get_interfaces()) {
-                        // We receive on broadcast addresses and we don't want loopback or point to point
-                        if (iface.flags.multicast && iface.ip.sock.sa_family == AF_INET) {
-                            auto& i = *reinterpret_cast<const sockaddr_in*>(&iface.ip);
-                            addresses.push_back(i.sin_addr.s_addr);
-                        }
-                    }
-
-                    for (auto& ad : addresses) {
-
-                        // Our multicast join request
-                        ip_mreq mreq;
-                        memset(&mreq, 0, sizeof(mreq));
-                        inet_pton(AF_INET, multicast_group.c_str(), &mreq.imr_multiaddr);
-                        mreq.imr_interface.s_addr = ad;
-
-                        // Join our multicast group
-                        if (setsockopt(
-                                fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, reinterpret_cast<char*>(&mreq), sizeof(ip_mreq))
-                            < 0) {
-                            throw std::system_error(network_errno,
-                                                    std::system_category(),
-                                                    "There was an error while attempting to join the multicast group");
-                        }
-                    }
-
-                    // Generate a reaction for the IO system that closes on death
-                    fd_t cfd = fd;
-                    reaction->unbinders.push_back([](const threading::Reaction& r) {
-                        r.reactor.emit<emit::Direct>(std::make_unique<operation::Unbind<IO>>(r.id));
-                    });
-                    reaction->unbinders.push_back([cfd](const threading::Reaction&) { close(cfd); });
-
-                    auto io_config =
-                        std::make_unique<IOConfiguration>(IOConfiguration{fd.release(), IO::READ, std::move(reaction)});
-
-                    // Send our configuration out for each file descriptor (same reaction)
-                    reaction->reactor.emit<emit::Direct>(io_config);
-
-                    // Return our handles
-                    return std::make_tuple(port, cfd);
+                                                               const std::string& multicast_group,
+                                                               const in_port_t& port           = 0,
+                                                               const std::string& bind_address = "") {
+                    return UDP::connect<DSL>(
+                        reaction,
+                        ConnectOptions{ConnectOptions::Type::MULTICAST, bind_address, port, multicast_group});
                 }
 
                 template <typename DSL>
-                static inline Packet get(threading::Reaction& r) {
-                    return UDP::get<DSL>(r);
+                static inline Packet get(threading::Reaction& reaction) {
+                    RecvResult result = read<DSL>(reaction);
+
+                    const auto& a = result.local;
+                    const bool multicast =
+                        (a.sock.sa_family == AF_INET && (ntohl(a.ipv4.sin_addr.s_addr) & 0xF0000000) == 0xE0000000)
+                        || (a.sock.sa_family == AF_INET6 && a.ipv6.sin6_addr.s6_addr[0] == 0xFF);
+
+                    // Only return multicast packets
+                    if (multicast) {
+                        Packet p{};
+                        p.valid       = result.valid;
+                        p.payload     = std::move(result.payload);
+                        auto local_s  = result.local.address();
+                        auto remote_s = result.remote.address();
+                        p.local       = Packet::Target{local_s.first, local_s.second};
+                        p.remote      = Packet::Target{remote_s.first, remote_s.second};
+                        return p;
+                    }
+
+                    return {};
                 }
             };
         };

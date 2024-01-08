@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2014 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -22,22 +26,25 @@
 #include "../threading/ReactionHandle.hpp"
 #include "fusion/BindFusion.hpp"
 #include "fusion/GetFusion.hpp"
+#include "fusion/GroupFusion.hpp"
+#include "fusion/PoolFusion.hpp"
 #include "fusion/PostconditionFusion.hpp"
 #include "fusion/PreconditionFusion.hpp"
 #include "fusion/PriorityFusion.hpp"
-#include "fusion/RescheduleFusion.hpp"
 
 namespace NUClear {
 namespace dsl {
 
     /// @brief All of the words from a reaction handle "fused" together into one type
     template <typename... Words>
-    struct Fusion : public fusion::BindFusion<Words...>,
-                    public fusion::GetFusion<Words...>,
-                    public fusion::PreconditionFusion<Words...>,
-                    public fusion::PriorityFusion<Words...>,
-                    public fusion::RescheduleFusion<Words...>,
-                    public fusion::PostconditionFusion<Words...> {};
+    struct Fusion
+        : public fusion::BindFusion<Words...>
+        , public fusion::GetFusion<Words...>
+        , public fusion::PreconditionFusion<Words...>
+        , public fusion::PriorityFusion<Words...>
+        , public fusion::GroupFusion<Words...>
+        , public fusion::PoolFusion<Words...>
+        , public fusion::PostconditionFusion<Words...> {};
 
 }  // namespace dsl
 }  // namespace NUClear

@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2014 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -20,6 +24,8 @@
 #define NUCLEAR_DSL_WORD_EVERY_HPP
 
 #include <cmath>
+
+#include "../../threading/Reaction.hpp"
 #include "../operation/ChronoTask.hpp"
 #include "../operation/Unbind.hpp"
 #include "emit/Direct.hpp"
@@ -37,8 +43,8 @@ namespace dsl {
 
         template <typename Unit, std::intmax_t num, std::intmax_t den>
         struct Per<std::chrono::duration<Unit, std::ratio<num, den>>> : public clock::duration {
-            Per(int ticks)
-                : clock::duration(std::lround((double(num) / double(ticks* den))
+            explicit Per(int ticks)
+                : clock::duration(std::lround((double(num) / double(ticks * den))
                                               * (double(clock::period::den) / double(clock::period::num)))) {}
         };
 
@@ -74,11 +80,11 @@ namespace dsl {
          *  seconds, minutes, hours).  Note that you can also define your own unit:  See
          *  http://en.cppreference.com/w/cpp/chrono/duration
          */
-        template <int ticks = 0, class period = NUClear::clock::duration>
+        template <int ticks = 0, class period = std::chrono::milliseconds>
         struct Every;
 
-        template <>
-        struct Every<0, NUClear::clock::duration> {
+        template <typename period>
+        struct Every<0, period> {
 
             template <typename DSL>
             static inline void bind(const std::shared_ptr<threading::Reaction>& reaction,
@@ -91,22 +97,8 @@ namespace dsl {
                 // Send our configuration out
                 reaction->reactor.emit<emit::Direct>(std::make_unique<operation::ChronoTask>(
                     [reaction, jump](NUClear::clock::time_point& time) {
-                        try {
-                            // submit the reaction to the thread pool
-                            auto task = reaction->get_task();
-                            if (task) {
-                                reaction->reactor.powerplant.submit(std::move(task));
-                            }
-                        }
-                        // If there is an exception while generating a reaction print it here, this shouldn't happen
-                        catch (const std::exception& ex) {
-                            reaction->reactor.log<NUClear::ERROR>("There was an exception while generating a reaction",
-                                                                  ex.what());
-                        }
-                        catch (...) {
-                            reaction->reactor.log<NUClear::ERROR>(
-                                "There was an unknown exception while generating a reaction");
-                        }
+                        // submit the reaction to the thread pool
+                        reaction->reactor.powerplant.submit(reaction->get_task());
 
                         time += jump;
 
