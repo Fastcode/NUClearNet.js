@@ -38,6 +38,7 @@ namespace extension {
                 case AF_INET6: return sizeof(sockaddr_in6);
                 default: throw std::runtime_error("unhandled socket address family");
             }
+            return {};
         }
 
         NUClearNetwork::PacketQueue::PacketTarget::PacketTarget(std::weak_ptr<NetworkTarget> target,
