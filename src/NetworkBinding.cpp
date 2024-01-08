@@ -17,11 +17,12 @@
 
 #include "NetworkBinding.hpp"
 #include "NetworkListener.hpp"
-#include "nuclear/src/util/serialise/xxhash.h"
+#include "nuclear/src/util/serialise/xxhash.hpp"
 
 namespace NUClear {
 
 using extension::network::NUClearNetwork;
+using util::serialise::xxhash64;
 
 NetworkBinding::NetworkBinding(const Napi::CallbackInfo& info): Napi::ObjectWrap<NetworkBinding>(info) {}
 
@@ -31,7 +32,7 @@ Napi::Value NetworkBinding::Hash(const Napi::CallbackInfo& info) {
     if (info.Length() > 0 && info[0].IsString()) {
         // Calculate hash
         std::string s = info[0].As<Napi::String>().Utf8Value();
-        uint64_t hash = XXH64(s.c_str(), s.size(), 0x4e55436c);
+        uint64_t hash = xxhash64(s.c_str(), s.size(), 0x4e55436c);
 
         // Return hash
         return
@@ -57,7 +58,7 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     const Napi::Value& arg_reliable = info[3];
 
     uint64_t hash = 0;
-    std::vector<char> payload;
+    std::vector<uint8_t> payload;
     std::string target = "";
     bool reliable      = false;
 
@@ -98,7 +99,7 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
     // If we have a string, apply XXHash to get the hash
     if (arg_hash.IsString()) {
         std::string s = arg_hash.As<Napi::String>().Utf8Value();
-        hash          = XXH64(s.c_str(), s.size(), 0x4e55436c);
+        hash          = xxhash64(s.c_str(), s.size(), 0x4e55436c);
     }
     // Otherwise try to interpret it as a buffer that contains the hash
     else if (arg_hash.IsTypedArray()) {
@@ -144,7 +145,7 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
 
         if (event == "packet") {
             this->net.set_packet_callback([cb = std::move(cb)](
-                const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, const bool& reliable, std::vector<char>&& payload) {
+                const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, const bool& reliable, std::vector<uint8_t>&& payload) {
 
                 std::string name = t.name;
                 std::string address;
@@ -173,8 +174,8 @@ void NetworkBinding::On(const Napi::CallbackInfo& info) {
                         Napi::String::New(env, address),
                         Napi::Number::New(env, port),
                         Napi::Boolean::New(env, reliable),
-                        Napi::Buffer<char>::Copy(env, reinterpret_cast<const char*>(&hash), sizeof(uint64_t)),
-                        Napi::Buffer<char>::Copy(env, payload.data(), payload.size())
+                        Napi::Buffer<uint8_t>::Copy(env, reinterpret_cast<const uint8_t*>(&hash), sizeof(uint64_t)),
+                        Napi::Buffer<uint8_t>::Copy(env, payload.data(), payload.size())
                     };
                 });
             });
@@ -334,7 +335,7 @@ void NetworkBinding::Destroy(const Napi::CallbackInfo& info) {
 #endif
 
     // Replace the ThreadSafeCallback instances to clean up the extra threads they created
-    this->net.set_packet_callback([](const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, const bool& reliable, std::vector<char>&& payload) {});
+    this->net.set_packet_callback([](const NUClearNetwork::NetworkTarget& t, const uint64_t& hash, const bool& reliable, std::vector<uint8_t>&& payload) {});
     this->net.set_join_callback([](const NUClearNetwork::NetworkTarget& t) {});
     this->net.set_leave_callback([](const NUClearNetwork::NetworkTarget& t) {});
     this->net.set_next_event_callback([](std::chrono::steady_clock::time_point t) {});
