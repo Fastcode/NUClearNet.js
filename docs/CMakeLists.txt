@@ -1,16 +1,42 @@
-OPTION(BUILD_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen and Sphinx)" FALSE)
+#[[
+MIT License
 
-IF(BUILD_DOCUMENTATION)
+Copyright (c) 2017 NUClear Contributors
 
-    FIND_PACKAGE(Doxygen REQUIRED)
-    FIND_PACKAGE(Sphinx REQUIRED)
+This file is part of the NUClear codebase.
+See https://github.com/Fastcode/NUClear for further info.
 
-    ADD_CUSTOM_TARGET(docs
-        COMMAND ${Sphinx_BINARY} -a ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Generating documentation pages using sphinx"
-    )
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
-    INSTALL(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} DESTINATION share/doc OPTIONAL)
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+Software.
 
-ENDIF(BUILD_DOCUMENTATION)
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+]]
+option(BUILD_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen and Sphinx)" FALSE)
+
+if(BUILD_DOCUMENTATION)
+
+  find_package(Doxygen REQUIRED)
+  find_package(Sphinx REQUIRED)
+
+  add_custom_target(
+    docs
+    COMMAND ${Sphinx_BINARY} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Generating documentation pages using sphinx"
+  )
+
+  install(
+    DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    DESTINATION share/doc
+    OPTIONAL
+  )
+
+endif(BUILD_DOCUMENTATION)

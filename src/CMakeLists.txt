@@ -1,119 +1,88 @@
-FILE(GLOB src
-    "*.cpp"
-    "include/nuclear"
-    "include/nuclear_bits/*.hpp"
-    "include/nuclear_bits/*.ipp")
+#[[
+MIT License
 
-FILE(GLOB src_threading
-    "threading/*.cpp"
-    "include/nuclear_bits/threading/*.hpp"
-    "include/nuclear_bits/threading/*.ipp")
+Copyright (c) 2013 NUClear Contributors
 
-FILE(GLOB src_extension
-    "extension/*.cpp"
-    "include/nuclear_bits/extension/*.hpp"
-    "include/nuclear_bits/extension/*.ipp")
+This file is part of the NUClear codebase.
+See https://github.com/Fastcode/NUClear for further info.
 
-FILE(GLOB src_extension_network
-    "extension/network/*.cpp"
-    "include/nuclear_bits/extension/network/*.hpp"
-    "include/nuclear_bits/extension/network/*.ipp")
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
-FILE(GLOB src_dsl
-    "dsl/*.cpp"
-    "include/nuclear_bits/dsl/*.hpp"
-    "include/nuclear_bits/dsl/*.ipp")
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+Software.
 
-FILE(GLOB src_dsl_store
-    "dsl/store/*.cpp"
-    "include/nuclear_bits/dsl/store/*.hpp"
-    "include/nuclear_bits/dsl/store/*.ipp")
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+]]
 
-FILE(GLOB src_dsl_trait
-    "dsl/trait/*.cpp"
-    "include/nuclear_bits/dsl/trait/*.hpp"
-    "include/nuclear_bits/dsl/trait/*.ipp")
+# Configure the two versions of the main header (in source vs nuclear_bits)
+set(nuclear_include_base_directory "")
+configure_file(nuclear.in ${PROJECT_BINARY_DIR}/include/nuclear)
+set(nuclear_include_base_directory "nuclear_bits/")
+configure_file(nuclear.in ${PROJECT_BINARY_DIR}/nuclear)
 
-FILE(GLOB src_dsl_operation
-    "dsl/operation/*.cpp"
-    "include/nuclear_bits/dsl/operation/*.hpp"
-    "include/nuclear_bits/dsl/operation/*.ipp")
+# Build the library
+find_package(Threads REQUIRED)
+file(GLOB_RECURSE src "*.c" "*.cpp" "*.hpp" "*.ipp")
+add_library(nuclear STATIC ${src})
+add_library(NUClear::nuclear ALIAS nuclear)
 
-FILE(GLOB src_dsl_fusion
-    "dsl/fusion/*.cpp"
-    "include/nuclear_bits/dsl/fusion/*.hpp"
-    "include/nuclear_bits/dsl/fusion/*.ipp")
+# Set compile options for NUClear
+target_link_libraries(nuclear ${CMAKE_THREAD_LIBS_INIT})
+set_target_properties(nuclear PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(nuclear PUBLIC cxx_std_14)
 
-FILE(GLOB src_dsl_validation
-    "dsl/validation/*.cpp"
-    "include/nuclear_bits/dsl/validation/*.hpp"
-    "include/nuclear_bits/dsl/validation/*.ipp")
+# Enable warnings, and all warnings are errors
+if(MSVC)
+  target_compile_options(nuclear PRIVATE /W4 /WX)
+else()
+  target_compile_options(nuclear PRIVATE -Wall -Wextra -pedantic -Werror)
+endif(MSVC)
 
-FILE(GLOB src_dsl_word
-    "dsl/word/*.cpp"
-    "include/nuclear_bits/dsl/word/*.hpp"
-    "include/nuclear_bits/dsl/word/*.ipp")
+# Make the NUClearConfig files
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+set(INSTALL_INCLUDE_DIR ${CMAKE_INSTALL_FULL_INCLUDEDIR})
+write_basic_package_version_file(${PROJECT_BINARY_DIR}/NUClearConfigVersion.cmake COMPATIBILITY SameMajorVersion)
+configure_package_config_file(
+  ${PROJECT_SOURCE_DIR}/cmake/NUClearConfig.cmake.in ${PROJECT_BINARY_DIR}/NUClearConfig.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NUClear
+  PATH_VARS INSTALL_INCLUDE_DIR
+)
 
-FILE(GLOB src_dsl_word_emit
-    "dsl/word/emit/*.cpp"
-    "include/nuclear_bits/dsl/word/emit/*.hpp"
-    "include/nuclear_bits/dsl/word/emit/*.ipp")
+# Install version, config and target files.
+install(FILES ${PROJECT_BINARY_DIR}/NUClearConfigVersion.cmake ${PROJECT_BINARY_DIR}/NUClearConfig.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NUClear
+)
+install(
+  EXPORT nuclear-targets
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NUClear
+  NAMESPACE NUClear::
+)
 
-FILE(GLOB src_message
-    "messages/*.cpp"
-    "include/nuclear_bits/message/*.hpp"
-    "include/nuclear_bits/message/*.ipp")
+# Install headers and targets
+install(
+  TARGETS nuclear
+  EXPORT nuclear-targets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+install(
+  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/nuclear_bits
+  FILES_MATCHING
+  PATTERN "*.hpp"
+  PATTERN "*.ipp"
+  PATTERN "*.h"
+)
+install(FILES ${PROJECT_BINARY_DIR}/nuclear DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-FILE(GLOB src_util
-    "util/*.cpp"
-    "include/nuclear_bits/util/*.hpp"
-    "include/nuclear_bits/util/*.ipp")
-
-FILE(GLOB src_util_network
-    "util/network/*.cpp"
-    "include/nuclear_bits/util/network/*.hpp"
-    "include/nuclear_bits/util/network/*.ipp")
-
-FILE(GLOB src_util_serialise
-    "util/serialise/*.c"
-    "util/serialise/*.cpp"
-    "include/nuclear_bits/util/serialise/*.h"
-    "include/nuclear_bits/util/serialise/*.hpp"
-    "include/nuclear_bits/util/serialise/*.ipp")
-
-SOURCE_GROUP(""                         FILES ${src})
-SOURCE_GROUP(threading                  FILES ${src_threading})
-SOURCE_GROUP(extension                  FILES ${src_extension})
-SOURCE_GROUP(extension\\network         FILES ${src_extension_network})
-SOURCE_GROUP(dsl                        FILES ${src_dsl})
-SOURCE_GROUP(dsl\\store                 FILES ${src_dsl_store})
-SOURCE_GROUP(dsl\\trait                 FILES ${src_dsl_trait})
-SOURCE_GROUP(dsl\\operation             FILES ${src_dsl_operation})
-SOURCE_GROUP(dsl\\fusion                FILES ${src_dsl_fusion})
-SOURCE_GROUP(dsl\\validation            FILES ${src_dsl_validation})
-SOURCE_GROUP(dsl\\word                  FILES ${src_dsl_word})
-SOURCE_GROUP(dsl\\word\\emit            FILES ${src_dsl_word_emit})
-SOURCE_GROUP(message                    FILES ${src_message})
-SOURCE_GROUP(util                       FILES ${src_util})
-SOURCE_GROUP(util\\network              FILES ${src_util_network})
-SOURCE_GROUP(util\\serialise            FILES ${src_util_serialise})
-
-ADD_LIBRARY(nuclear STATIC
-    ${src}
-    ${src_threading}
-    ${src_extension}
-    ${src_extension_network}
-    ${src_dsl_store}
-    ${src_dsl_trait}
-    ${src_dsl_operation}
-    ${src_dsl_fusion}
-    ${src_dsl_validation}
-    ${src_dsl_word}
-    ${src_dsl_word_emit}
-    ${src_dsl}
-    ${src_message}
-    ${src_util}
-    ${src_util_network}
-    ${src_util_serialise})
-
-INSTALL(TARGETS nuclear ARCHIVE DESTINATION lib)
+export(
+  TARGETS nuclear
+  NAMESPACE NUClear::
+  FILE nuclear-targets.cmake
+)

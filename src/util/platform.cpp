@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2016 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -16,11 +20,12 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "nuclear_bits/util/platform.hpp"
+#include "platform.hpp"
 
 #ifdef _WIN32
 
-#include <stdexcept>
+    #include <stdexcept>
+    #include <system_error>
 LPFN_WSARECVMSG WSARecvMsg = nullptr;
 
 // Go get that WSARecvMsg function from stupid land
@@ -31,23 +36,24 @@ void initialize_WSARecvMsg() {
 
     sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-    if (SOCKET_ERROR == WSAIoctl(sock,
-                                 SIO_GET_EXTENSION_FUNCTION_POINTER,
-                                 &guid,
-                                 sizeof(guid),
-                                 &WSARecvMsg,
-                                 sizeof(WSARecvMsg),
-                                 &dw_bytes,
-                                 nullptr,
-                                 nullptr)) {
+    if (SOCKET_ERROR
+        == WSAIoctl(sock,
+                    SIO_GET_EXTENSION_FUNCTION_POINTER,
+                    &guid,
+                    sizeof(guid),
+                    &WSARecvMsg,
+                    sizeof(WSARecvMsg),
+                    &dw_bytes,
+                    nullptr,
+                    nullptr)) {
         throw std::runtime_error("We could not get WSARecvMsg from the OS");
     }
 
-    closesocket(sock);
+    ::closesocket(sock);
 }
 
 namespace NUClear {
-int recvmsg(fd_t fd, msghdr* msg, int flags) {
+int recvmsg(fd_t fd, msghdr* msg, int /*flags*/) {
 
     // If we haven't setup our recvmsg function yet, set it up
     if (WSARecvMsg == nullptr) {
@@ -56,7 +62,6 @@ int recvmsg(fd_t fd, msghdr* msg, int flags) {
 
     // Translate to windows speak
     DWORD received = 0;
-    DWORD f        = 0;
 
     int v = WSARecvMsg(fd, msg, &received, nullptr, nullptr);
 
@@ -70,6 +75,23 @@ int sendmsg(fd_t fd, msghdr* msg, int flags) {
 
     return v == 0 ? sent : v;
 }
+
+WSAHolder::WSAHolder() {
+    WORD version = MAKEWORD(2, 2);
+    WSADATA wsa_data;
+
+    int startup_status = WSAStartup(version, &wsa_data);
+    if (startup_status != 0) {
+        throw std::system_error(startup_status, std::system_category(), "WSAStartup() failed");
+    }
 }
+
+WSAHolder::~WSAHolder() {
+    WSACleanup();
+}
+
+WSAHolder WSAHolder::instance{};
+
+}  // namespace NUClear
 
 #endif

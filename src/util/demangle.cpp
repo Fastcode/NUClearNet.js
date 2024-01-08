@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2016 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -16,16 +20,24 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "nuclear_bits/util/demangle.hpp"
+#include "demangle.hpp"
+
+#include <regex>
 
 // Windows symbol demangler
 #ifdef _WIN32
 
-#include <Dbghelp.h>
-#include <mutex>
-#include "nuclear_bits/util/platform.hpp"
+    #include "platform.hpp"
 
-#pragma comment(lib, "Dbghelp.lib")
+// Dbghelp.h depends on types from Windows.h so it needs to be included first
+// Separate to always include platform.hpp (which includes windows.h) first
+
+    #include <Dbghelp.h>
+
+    #include <array>
+    #include <mutex>
+
+    #pragma comment(lib, "Dbghelp.lib")
 
 namespace NUClear {
 namespace util {
@@ -50,6 +62,11 @@ namespace util {
     }
 
     std::string demangle(const char* symbol) {
+        // If the symbol is null or the empty string then just return it
+        if (symbol == nullptr || symbol[0] == '\0') {
+            return "";
+        }
+
         std::lock_guard<std::mutex> lock(symbol_mutex);
 
         // Initialise the symbols if we have to
@@ -57,10 +74,15 @@ namespace util {
             init_symbols();
         }
 
-        char name[256];
+        std::array<char, 256> name{};
+        auto len = UnDecorateSymbolName(symbol, name.data(), DWORD(name.size()), 0);
 
-        if (int len = UnDecorateSymbolName(symbol, name, sizeof(name), 0)) {
-            return std::string(name, len);
+        if (len > 0) {
+            std::string demangled(name.data(), len);
+            demangled = std::regex_replace(demangled, std::regex(R"(struct\s+)"), "");
+            demangled = std::regex_replace(demangled, std::regex(R"(class\s+)"), "");
+            demangled = std::regex_replace(demangled, std::regex(R"(\s+)"), "");
+            return demangled;
         }
         else {
             return symbol;
@@ -72,10 +94,11 @@ namespace util {
 // GNU/Clang symbol demangler
 #else
 
-#include <cxxabi.h>  // for __cxa_demangle
-#include <cstdlib>   // for free
-#include <memory>    // for unique_ptr
-#include <string>    // for string
+    #include <cxxabi.h>  // for __cxa_demangle
+
+    #include <cstdlib>  // for free
+    #include <memory>   // for unique_ptr
+    #include <string>   // for string
 
 namespace NUClear {
 namespace util {
@@ -89,10 +112,25 @@ namespace util {
      */
     std::string demangle(const char* symbol) {
 
-        int status = -4;  // some arbitrary value to eliminate the compiler warning
-        std::unique_ptr<char, void (*)(void*)> res{abi::__cxa_demangle(symbol, nullptr, nullptr, &status), std::free};
+        if (symbol == nullptr) {
+            return {};
+        }
 
-        return std::string(status == 0 ? res.get() : symbol);
+        int status = -1;
+        const std::unique_ptr<char, void (*)(char*)> res{abi::__cxa_demangle(symbol, nullptr, nullptr, &status),
+                                                         [](char* ptr) {
+                                                             // The API for __cxa_demangle REQUIRES us to call free
+                                                             // No choice here so suppress the linter
+                                                             // NOLINTNEXTLINE(cppcoreguidelines-no-malloc)
+                                                             std::free(ptr);  // NOSONAR
+                                                         }};
+        if (res != nullptr) {
+            std::string demangled = res.get();
+            demangled             = std::regex_replace(demangled, std::regex(R"(\s+)"), "");
+            return demangled;
+        }
+
+        return symbol;
     }
 
 }  // namespace util

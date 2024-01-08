@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -17,40 +21,69 @@
  */
 
 #include <catch.hpp>
+#include <nuclear>
 
-#include "nuclear"
+#include "test_util/TestBase.hpp"
 
 // Anonymous namespace to keep everything file local
 namespace {
 
-template <int id>
-struct Message {};
+/// @brief Events that occur during the test
+std::vector<std::string> events;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
-class TestReactor : public NUClear::Reactor {
+struct Message {
+    Message(int i) : i(i) {}
+    int i;
+};
+
+class TestReactor : public test_util::TestBase<TestReactor> {
 public:
-    TestReactor(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)) {
+    TestReactor(std::unique_ptr<NUClear::Environment> environment) : TestBase(std::move(environment)) {
 
         // Make an always disabled reaction
-        ReactionHandle a =
-            on<Trigger<Message<0>>, Priority::HIGH>().then([this] { FAIL("This reaction is disabled always"); });
+        a = on<Trigger<Message>, Priority::HIGH>().then([](const Message& msg) {  //
+            events.push_back("Executed disabled reaction " + std::to_string(msg.i));
+        });
         a.disable();
 
-        ReactionHandle b = on<Trigger<Message<0>>>().then([this] { powerplant.shutdown(); });
+        // Make a reaction that we toggle on and off
+        b = on<Trigger<Message>, Priority::HIGH>().then([this](const Message& msg) {  //
+            events.push_back("Executed toggled reaction " + std::to_string(msg.i));
+            b.disable();
+            emit(std::make_unique<Message>(1));
+        });
+
+        on<Trigger<Message>>().then([](const Message& msg) {  //
+            events.push_back("Executed enabled reaction " + std::to_string(msg.i));
+        });
 
         // Start our test
-        on<Startup>().then([this] { emit(std::make_unique<Message<0>>()); });
+        on<Startup>().then([this] {  //
+            emit(std::make_unique<Message>(0));
+        });
     }
+
+    ReactionHandle a{};
+    ReactionHandle b{};
 };
 }  // namespace
 
 TEST_CASE("Testing reaction handle functionality", "[api][reactionhandle]") {
-
-    NUClear::PowerPlant::Configuration config;
+    NUClear::Configuration config;
     config.thread_count = 1;
     NUClear::PowerPlant plant(config);
-
-    // We are installing with an initial log level of debug
     plant.install<TestReactor>();
-
     plant.start();
+
+    const std::vector<std::string> expected = {
+        "Executed toggled reaction 0",
+        "Executed enabled reaction 0",
+        "Executed enabled reaction 1",
+    };
+
+    // Make an info print the diff in an easy to read way if we fail
+    INFO(test_util::diff_string(expected, events));
+
+    // Check the events fired in order and only those events
+    REQUIRE(events == expected);
 }

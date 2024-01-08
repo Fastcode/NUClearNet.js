@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -17,66 +21,69 @@
  */
 
 #include <catch.hpp>
+#include <nuclear>
 
-#include "nuclear"
+#include "test_util/TestBase.hpp"
 
 namespace {
 
-struct TestMessage {
-    int value;
+/// @brief Events that occur during the test
+std::vector<std::string> events;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
+struct TestMessage {
     TestMessage(int v) : value(v){};
+    int value;
 };
 
-int emit_counter = 0;
-int recv_counter = 0;
-
-class TestReactor : public NUClear::Reactor {
+class TestReactor : public test_util::TestBase<TestReactor> {
 public:
-    TestReactor(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)) {
+    TestReactor(std::unique_ptr<NUClear::Environment> environment) : TestBase(std::move(environment)) {
 
         on<Last<5, Trigger<TestMessage>>>().then([this](std::list<std::shared_ptr<const TestMessage>> messages) {
-
-            // We got another one
-            ++recv_counter;
-
-            // Send out another before we test
-            emit(std::make_unique<TestMessage>(++emit_counter));
+            std::stringstream ss;
+            for (auto& m : messages) {
+                ss << m->value << " ";
+            }
+            events.push_back(ss.str());
 
             // Finish when we get to 10
-            if (messages.front()->value >= 10) {
-                powerplant.shutdown();
+            if (messages.back()->value < 10) {
+                // Send out another message
+                emit(std::make_unique<TestMessage>(messages.back()->value + 1));
             }
-            else {
-                // Our list must be less than 5 long
-                REQUIRE(messages.size() <= 5);
-
-                // If our size is less than 5 it should be the size of the front element
-                if (messages.size() < 5) {
-                    REQUIRE(messages.size() == messages.back()->value);
-                }
-
-                // Check that our numbers are decreasing
-                int i = messages.front()->value;
-                for (auto& m : messages) {
-                    REQUIRE(m->value == i);
-                    ++i;
-                }
-            }
-
         });
 
-        on<Startup>().then([this] { emit(std::make_unique<TestMessage>(++emit_counter)); });
+        on<Startup>().then([this] { emit(std::make_unique<TestMessage>(0)); });
     }
 };
+
 }  // namespace
 
 TEST_CASE("Testing the last n feature", "[api][last]") {
 
-    NUClear::PowerPlant::Configuration config;
+    NUClear::Configuration config;
     config.thread_count = 1;
     NUClear::PowerPlant plant(config);
     plant.install<TestReactor>();
-
     plant.start();
+
+    const std::vector<std::string> expected = {
+        "0 ",
+        "0 1 ",
+        "0 1 2 ",
+        "0 1 2 3 ",
+        "0 1 2 3 4 ",
+        "1 2 3 4 5 ",
+        "2 3 4 5 6 ",
+        "3 4 5 6 7 ",
+        "4 5 6 7 8 ",
+        "5 6 7 8 9 ",
+        "6 7 8 9 10 ",
+    };
+
+    // Make an info print the diff in an easy to read way if we fail
+    INFO(test_util::diff_string(expected, events));
+
+    // Check the events fired in order and only those events
+    REQUIRE(events == expected);
 }

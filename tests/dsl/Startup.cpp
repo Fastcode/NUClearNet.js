@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -17,38 +21,53 @@
  */
 
 #include <catch.hpp>
+#include <nuclear>
 
-#include "nuclear"
+#include "test_util/TestBase.hpp"
 
 namespace {
+
+/// @brief Events that occur during the test
+std::vector<std::string> events;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
 struct SimpleMessage {
-    int data;
+    SimpleMessage(int data) : data(data) {}
+    int data{0};
 };
 
-class TestReactor : public NUClear::Reactor {
+class TestReactor : public test_util::TestBase<TestReactor> {
 public:
-    TestReactor(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)) {
+    TestReactor(std::unique_ptr<NUClear::Environment> environment) : TestBase(std::move(environment)) {
 
-        on<Trigger<SimpleMessage>>().then([this](const SimpleMessage& message) {
-
-            // The message we received should have test == 10
-            REQUIRE(message.data == 10);
-
-            // We are finished the test
-            powerplant.shutdown();
+        on<Trigger<SimpleMessage>>().then([](const SimpleMessage& message) {  //
+            events.push_back("SimpleMessage triggered with " + std::to_string(message.data));
         });
 
-        on<Startup>().then([this]() { emit(std::unique_ptr<SimpleMessage>(new SimpleMessage{10})); });
+        on<Startup>().then([this]() {
+            events.push_back("Startup triggered");
+            events.push_back("Emitting SimpleMessage");
+            emit(std::make_unique<SimpleMessage>(10));
+        });
     }
 };
 }  // namespace
 
 TEST_CASE("Testing the startup event is emitted at the start of the program", "[api][startup]") {
-
-    NUClear::PowerPlant::Configuration config;
+    NUClear::Configuration config;
     config.thread_count = 1;
     NUClear::PowerPlant plant(config);
     plant.install<TestReactor>();
-
     plant.start();
+
+    const std::vector<std::string> expected = {
+        "Startup triggered",
+        "Emitting SimpleMessage",
+        "SimpleMessage triggered with 10",
+    };
+
+    // Make an info print the diff in an easy to read way if we fail
+    INFO(test_util::diff_string(expected, events));
+
+    // Check the events fired in order and only those events
+    REQUIRE(events == expected);
 }
