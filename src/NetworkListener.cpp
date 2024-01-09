@@ -139,7 +139,7 @@ void NetworkListener::OnProgress(const char*, size_t) {
     try {
         this->binding->net.process();
     }
-    catch (const std::exception& e) {
+    catch (const std::exception&) {
         // We can't throw to javascript as we are in another thread
         // Still we don't want to crash the process so swallow the exception
     }
