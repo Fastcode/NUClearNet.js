@@ -9,6 +9,7 @@
                 'src/nuclear/src/extension/network/NUClearNetwork.cpp',
                 'src/nuclear/src/util/platform.cpp',
                 'src/nuclear/src/util/network/get_interfaces.cpp',
+                'src/nuclear/src/util/network/if_number_from_address.cpp',
                 'src/nuclear/src/util/network/resolve.cpp',
                 'src/nuclear/src/util/serialise/xxhash.cpp'
             ],
