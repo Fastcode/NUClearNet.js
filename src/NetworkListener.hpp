@@ -18,8 +18,9 @@
 #ifndef NETWORKLISTENER_H
 #define NETWORKLISTENER_H
 
-#include "NetworkBinding.hpp"
 #include <napi.h>
+
+#include "NetworkBinding.hpp"
 
 namespace NUClear {
 

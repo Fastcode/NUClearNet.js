@@ -68,11 +68,11 @@ class NUClearNet extends EventEmitter {
       }
     });
 
-    // Bind our callback functions
-    this._net.on('packet', this._onPacket.bind(this));
-    this._net.on('join', this._onJoin.bind(this));
-    this._net.on('leave', this._onLeave.bind(this));
-    this._net.on('wait', this._onWait.bind(this));
+    // Pass our javascript callbacks to the C++ side
+    this._net.onPacket(this._onPacket.bind(this));
+    this._net.onJoin(this._onJoin.bind(this));
+    this._net.onLeave(this._onLeave.bind(this));
+    this._net.onWait(this._onWait.bind(this));
   }
 
   _onPacket(name, address, port, reliable, hash, payload) {

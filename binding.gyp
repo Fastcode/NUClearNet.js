@@ -8,13 +8,13 @@
                 'src/NetworkListener.cpp',
                 'src/nuclear/src/extension/network/NUClearNetwork.cpp',
                 'src/nuclear/src/util/platform.cpp',
-                'src/nuclear/src/util/serialise/xxhash.c',
-                'src/nuclear/src/util/network/get_interfaces.cpp'
+                'src/nuclear/src/util/network/get_interfaces.cpp',
+                'src/nuclear/src/util/network/resolve.cpp',
+                'src/nuclear/src/util/serialise/xxhash.cpp'
             ],
             'cflags': [],
             'include_dirs': [
                 '<!@(node -p "require(\'node-addon-api\').include")',
-                "<!@(node -p \"require('napi-thread-safe-callback').include\")",
                 'src/nuclear/src/include'
             ],
             "defines": [
