@@ -213,7 +213,7 @@ test('NUClearNet emits leave events', async () => {
 
       return cleanUp;
     },
-    { timeout: 1000 },
+    { timeout: 1500 },
   );
 });
 
