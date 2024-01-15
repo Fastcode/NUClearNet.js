@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2014 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -51,24 +55,12 @@ namespace dsl {
 
                 static void emit(PowerPlant& powerplant, std::shared_ptr<DataType> data) {
 
-                    // Set our thread local store data
-                    store::ThreadStore<std::shared_ptr<DataType>>::value = &data;
-
                     // Run all our reactions that are interested
                     for (auto& reaction : store::TypeCallbackStore<DataType>::get()) {
-                        try {
-                            auto task = reaction->get_task();
-                            if (task) { powerplant.submit(std::move(task)); }
-                        }
-                        // If there is an exception while generating a reaction print it here, this shouldn't happen
-                        catch (const std::exception& ex) {
-                            powerplant.log<NUClear::ERROR>("There was an exception while generating a reaction",
-                                                           ex.what());
-                        }
-                        catch (...) {
-                            powerplant.log<NUClear::ERROR>(
-                                "There was an unknown exception while generating a reaction");
-                        }
+
+                        // Set our thread local store data
+                        store::ThreadStore<std::shared_ptr<DataType>>::value = &data;
+                        powerplant.submit(reaction->get_task());
                     }
 
                     // Unset our thread local store data

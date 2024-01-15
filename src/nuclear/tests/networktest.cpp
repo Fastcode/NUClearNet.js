@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -16,6 +20,7 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <array>
 #include <csignal>
 #include <cstdlib>
 #include <nuclear>
@@ -35,26 +40,26 @@ public:
             std::cout << "Connected To" << std::endl;
             std::cout << "\tName: " << join.name << std::endl;
 
-            char c[255] = {};
+            std::array<char, 255> c = {0};
 
             switch (join.address.sock.sa_family) {
                 case AF_INET:
 
                     std::cout << "\tAddress: "
-                              << inet_ntop(join.address.sock.sa_family,
-                                           &join.address.ipv4.sin_addr,
-                                           static_cast<char*>(c),
-                                           sizeof(c))
+                              << ::inet_ntop(join.address.sock.sa_family,
+                                             &join.address.ipv4.sin_addr,
+                                             c.data(),
+                                             c.size())
                               << std::endl;
                     std::cout << "\tPort: " << ntohs(join.address.ipv4.sin_port) << std::endl;
                     break;
 
                 case AF_INET6:
                     std::cout << "\tAddress: "
-                              << inet_ntop(join.address.sock.sa_family,
-                                           &join.address.ipv6.sin6_addr,
-                                           static_cast<char*>(c),
-                                           sizeof(c))
+                              << ::inet_ntop(join.address.sock.sa_family,
+                                             &join.address.ipv6.sin6_addr,
+                                             c.data(),
+                                             c.size())
                               << std::endl;
                     std::cout << "\tPort: " << ntohs(join.address.ipv6.sin6_port) << std::endl;
                     break;
@@ -74,34 +79,35 @@ public:
             emit<Scope::NETWORK>(std::make_unique<std::string>(std::numeric_limits<uint16_t>::max(), 'v'), join.name);
 
             // Emit long reliable message
-            emit<Scope::NETWORK>(
-                std::make_unique<std::string>(std::numeric_limits<uint16_t>::max(), 's'), join.name, true);
+            emit<Scope::NETWORK>(std::make_unique<std::string>(std::numeric_limits<uint16_t>::max(), 's'),
+                                 join.name,
+                                 true);
         });
 
         on<Trigger<NetworkLeave>, Sync<TestReactor>>().then([](const NetworkLeave& leave) {
             std::cout << "Disconnected from" << std::endl;
             std::cout << "\tName: " << leave.name << std::endl;
 
-            char c[255] = {};
+            std::array<char, 255> c = {0};
 
             switch (leave.address.sock.sa_family) {
                 case AF_INET:
 
                     std::cout << "\tAddress: "
-                              << inet_ntop(leave.address.sock.sa_family,
-                                           &leave.address.ipv4.sin_addr,
-                                           static_cast<char*>(c),
-                                           sizeof(c))
+                              << ::inet_ntop(leave.address.sock.sa_family,
+                                             &leave.address.ipv4.sin_addr,
+                                             c.data(),
+                                             c.size())
                               << std::endl;
                     std::cout << "\tPort: " << ntohs(leave.address.ipv4.sin_port) << std::endl;
                     break;
 
                 case AF_INET6:
                     std::cout << "\tAddress: "
-                              << inet_ntop(leave.address.sock.sa_family,
-                                           &leave.address.ipv6.sin6_addr,
-                                           static_cast<char*>(c),
-                                           sizeof(c))
+                              << ::inet_ntop(leave.address.sock.sa_family,
+                                             &leave.address.ipv6.sin6_addr,
+                                             c.data(),
+                                             c.size())
                               << std::endl;
                     std::cout << "\tPort: " << ntohs(leave.address.ipv6.sin6_port) << std::endl;
                     break;
@@ -112,7 +118,9 @@ public:
             [](const NUClear::dsl::word::NetworkSource& source, const std::string& s) {
                 std::cout << "Processing a message from " << source.name << std::endl;
 
-                if (s.size() < 100) { std::cout << s << std::endl; }
+                if (s.size() < 100) {
+                    std::cout << s << std::endl;
+                }
                 else {
                     std::cout << s[0] << std::endl;
                 }
@@ -158,13 +166,24 @@ public:
 }  // namespace
 
 
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, const char* argv[]) {
-    signal(SIGINT, [](int) { NUClear::PowerPlant::powerplant->shutdown(); });
+    auto old_sigint = signal(SIGINT, [](int /*signal*/) { NUClear::PowerPlant::powerplant->shutdown(); });
+    if (old_sigint == SIG_ERR) {
+        std::cerr << "Failed to set SIGINT handler";
+        return -1;
+    }
 
-    NUClear::PowerPlant::Configuration config;
+    NUClear::Configuration config;
     config.thread_count = 4;
     NUClear::PowerPlant plant(config, argc, argv);
     plant.install<TestReactor>();
 
     plant.start();
+
+    old_sigint = signal(SIGINT, old_sigint);
+    if (old_sigint == SIG_ERR) {
+        std::cerr << "Failed to revert SIGINT handler";
+        return -1;
+    }
 }

@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -28,25 +32,39 @@ namespace NUClear {
 namespace util {
     namespace network {
 
+        /**
+         * @brief A structure that contains information about a network interface
+         */
         struct Interface {
-            Interface() : name(""), ip(), netmask(), broadcast(), flags() {}
+            /// @brief The name of the interface
+            std::string name{};
 
-            std::string name;
-
-            sock_t ip;
-            sock_t netmask;
-            sock_t broadcast;
+            /// @brief The address that is bound to the interface
+            sock_t ip{};
+            /// @brief The netmask of the interface
+            sock_t netmask{};
+            /// @brief The broadcast address of the interface or point to point address
+            sock_t broadcast{};
 
             struct Flags {
-                Flags() : broadcast(false), loopback(false), pointtopoint(false), multicast(false) {}
-
-                bool broadcast;
-                bool loopback;
-                bool pointtopoint;
-                bool multicast;
-            } flags;
+                /// @brief True if the interface is a broadcast interface
+                bool broadcast{false};
+                /// @brief True if the interface is a loopback interface
+                bool loopback{false};
+                /// @brief True if the interface is a point to point interface
+                bool pointtopoint{false};
+                /// @brief True if the interface is a multicast interface
+                bool multicast{false};
+            };
+            /// @brief The flags that are set on the interface
+            Flags flags;
         };
 
+        /**
+         * @brief Gets a list of all the network interfaces on the system with the addresses they are bound to
+         *
+         * @return a list of all the interfaces on the system
+         */
         std::vector<Interface> get_interfaces();
 
     }  // namespace network

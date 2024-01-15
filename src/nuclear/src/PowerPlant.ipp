@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -22,7 +26,8 @@
 
 namespace NUClear {
 
-inline PowerPlant::PowerPlant(Configuration config, int argc, const char* argv[]) : configuration(config) {
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
+inline PowerPlant::PowerPlant(Configuration config, int argc, const char* argv[]) : scheduler(config.thread_count) {
 
     // Stop people from making more then one powerplant
     if (powerplant != nullptr) {
@@ -43,20 +48,21 @@ inline PowerPlant::PowerPlant(Configuration config, int argc, const char* argv[]
         args.emplace_back(argv[i]);
     }
 
-    // We emit this twice, so the data is available for extensions
+    // Emit our command line arguments
     emit(std::make_unique<message::CommandLineArguments>(args));
-    emit<dsl::word::emit::Initialise>(std::make_unique<message::CommandLineArguments>(args));
 }
 
-template <typename T, enum LogLevel level>
-void PowerPlant::install() {
+template <typename T, typename... Args>
+T& PowerPlant::install(Args&&... args) {
 
     // Make sure that the class that we received is a reactor
     static_assert(std::is_base_of<Reactor, T>::value, "You must install Reactors");
 
     // The reactor constructor should handle subscribing to events
-    reactors.push_back(
-        std::make_unique<T>(std::make_unique<Environment>(*this, util::demangle(typeid(T).name()), level)));
+    reactors.push_back(std::make_unique<T>(std::make_unique<Environment>(*this, util::demangle(typeid(T).name())),
+                                           std::forward<Args>(args)...));
+
+    return static_cast<T&>(*reactors.back());
 }
 
 // Default emit with no types
@@ -100,10 +106,10 @@ struct EmitCaller {
 
 
 template <template <typename> class First, template <typename> class... Remainder, typename T, typename... Arguments>
-void PowerPlant::emit_shared(std::shared_ptr<T>&& ptr, Arguments&&... args) {
+void PowerPlant::emit_shared(std::shared_ptr<T> data, Arguments&&... args) {
 
     using Functions      = std::tuple<First<T>, Remainder<T>...>;
-    using ArgumentPack   = decltype(std::forward_as_tuple(*this, ptr, std::forward<Arguments>(args)...));
+    using ArgumentPack   = decltype(std::forward_as_tuple(*this, data, std::forward<Arguments>(args)...));
     using CallerArgs     = std::tuple<>;
     using FusionFunction = util::FunctionFusion<Functions, ArgumentPack, EmitCaller, CallerArgs, 2>;
 
@@ -113,7 +119,7 @@ void PowerPlant::emit_shared(std::shared_ptr<T>&& ptr, Arguments&&... args) {
                   "match what you are trying to do.");
 
     // Fuse our emit handlers and call the fused function
-    FusionFunction::call(*this, ptr, std::forward<Arguments>(args)...);
+    FusionFunction::call(*this, data, std::forward<Arguments>(args)...);
 }
 
 template <template <typename> class First, template <typename> class... Remainder, typename... Arguments>
@@ -146,34 +152,38 @@ void PowerPlant::emit(Arguments&&... args) {
     emit_shared<First, Remainder...>(std::forward<Arguments>(args)...);
 }
 
-// Anonymous metafunction that concatenates everything into a single string
-namespace {
-    template <typename T>
-    inline void log_impl(std::stringstream& output, T&& first) {
-        output << first;
-    }
+template <typename T>
+inline void log_impl(std::stringstream& output, T&& first) {
+    output << std::forward<T>(first);
+}
 
-    template <typename First, typename... Remainder>
-    inline void log_impl(std::stringstream& output, First&& first, Remainder&&... args) {
-        output << first << " ";
-        log_impl(output, std::forward<Remainder>(args)...);
-    }
-}  // namespace
+template <typename First, typename... Remainder>
+inline void log_impl(std::stringstream& output, First&& first, Remainder&&... args) {
+    output << std::forward<First>(first) << " ";
+    log_impl(output, std::forward<Remainder>(args)...);
+}
 
 template <enum LogLevel level, typename... Arguments>
 void PowerPlant::log(Arguments&&... args) {
 
+    // If there is no powerplant then do nothing
+    if (powerplant == nullptr) {
+        return;
+    }
+
+    // Get the current task
+    const auto* current_task = threading::ReactionTask::get_current_task();
+
     // Build our log message by concatenating everything to a stream
     std::stringstream output_stream;
     log_impl(output_stream, std::forward<Arguments>(args)...);
-    std::string output = output_stream.str();
-
-    auto* current_task = threading::ReactionTask::get_current_task();
-    auto* task         = current_task ? current_task->stats.get() : nullptr;
 
     // Direct emit the log message so that any direct loggers can use it
-    powerplant->emit<dsl::word::emit::Direct>(
-        std::make_unique<message::LogMessage>(message::LogMessage{level, output, task}));
+    powerplant->emit<dsl::word::emit::Direct>(std::make_unique<message::LogMessage>(
+        level,
+        current_task != nullptr ? current_task->parent.reactor.log_level : LogLevel::UNKNOWN,
+        output_stream.str(),
+        current_task != nullptr ? current_task->stats : nullptr));
 }
 
 }  // namespace NUClear

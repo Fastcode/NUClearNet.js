@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -23,12 +27,13 @@
 
 namespace NUClear {
 
-#ifndef NUCLEAR_CLOCK_TYPE
-#    define NUCLEAR_CLOCK_TYPE std::chrono::steady_clock
-#endif  // NUCLEAR_CLOCK_TYPE
-
-/// @brief The base clock that is used when defining the NUClear clock
+#ifdef NUCLEAR_CLOCK_TYPE
+/// @brief The custom base clock that is used when defining the NUClear clock
 using base_clock = NUCLEAR_CLOCK_TYPE;
+#else
+/// @brief The default base clock that is used when defining the NUClear clock
+using base_clock = std::chrono::steady_clock;
+#endif  // NUCLEAR_CLOCK_TYPE
 
 #ifndef NUCLEAR_CUSTOM_CLOCK
 

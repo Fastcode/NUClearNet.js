@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -31,13 +35,14 @@ namespace dsl {
         using DSL = Fusion<Sentence...>;
 
         template <typename... Arguments>
-        static inline auto bind(const std::shared_ptr<threading::Reaction>& r, Arguments... args)
+        static inline auto bind(const std::shared_ptr<threading::Reaction>& r, Arguments&&... args)
             -> decltype(DSL::template bind<Parse<Sentence...>>(r, std::forward<Arguments>(args)...)) {
             return DSL::template bind<Parse<Sentence...>>(r, std::forward<Arguments>(args)...);
         }
 
-        static inline auto get(threading::Reaction& r) -> decltype(
-            std::conditional_t<fusion::has_get<DSL>::value, DSL, fusion::NoOp>::template get<Parse<Sentence...>>(r)) {
+        static inline auto get(threading::Reaction& r)
+            -> decltype(std::conditional_t<fusion::has_get<DSL>::value, DSL, fusion::NoOp>::template get<
+                        Parse<Sentence...>>(r)) {
             return std::conditional_t<fusion::has_get<DSL>::value, DSL, fusion::NoOp>::template get<Parse<Sentence...>>(
                 r);
         }
@@ -52,9 +57,14 @@ namespace dsl {
                 Parse<Sentence...>>(r);
         }
 
-        static std::unique_ptr<threading::ReactionTask> reschedule(std::unique_ptr<threading::ReactionTask>&& task) {
-            return std::conditional_t<fusion::has_reschedule<DSL>::value, DSL, fusion::NoOp>::template reschedule<DSL>(
-                std::move(task));
+        static inline util::GroupDescriptor group(threading::Reaction& r) {
+            return std::conditional_t<fusion::has_group<DSL>::value, DSL, fusion::NoOp>::template group<
+                Parse<Sentence...>>(r);
+        }
+
+        static inline util::ThreadPoolDescriptor pool(threading::Reaction& r) {
+            return std::conditional_t<fusion::has_pool<DSL>::value, DSL, fusion::NoOp>::template pool<
+                Parse<Sentence...>>(r);
         }
 
         static inline void postcondition(threading::ReactionTask& r) {

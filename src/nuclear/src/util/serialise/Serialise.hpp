@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,11 +23,16 @@
 #ifndef NUCLEAR_UTIL_SERIALISE_SERIALISE_HPP
 #define NUCLEAR_UTIL_SERIALISE_SERIALISE_HPP
 
+#include <cstdint>
+#include <cstring>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <typeinfo>
+#include <vector>
 
 #include "../demangle.hpp"
-#include "xxhash.h"
+#include "xxhash.hpp"
 
 // Forward declare google protocol buffers
 // We don't actually use or require them, but if
@@ -42,48 +51,45 @@ namespace util {
         template <typename T, typename Check = T>
         struct Serialise;
 
-        // Plain old data
+        // Trivially copyable data
         template <typename T>
-        struct Serialise<T, std::enable_if_t<std::is_trivial<T>::value, T>> {
+        struct Serialise<T, std::enable_if_t<std::is_trivially_copyable<T>::value, T>> {
 
-            static inline std::vector<char> serialise(const T& in) {
-
-                // Copy the bytes into an array
-                const char* dataptr = reinterpret_cast<const char*>(&in);
-                return std::vector<char>(dataptr, dataptr + sizeof(T));
+            static inline std::vector<uint8_t> serialise(const T& in) {
+                std::vector<uint8_t> out(sizeof(T));
+                std::memcpy(out.data(), &in, sizeof(T));
+                return out;
             }
 
-            static inline T deserialise(const std::vector<char>& in) {
-
-                // Copy the data into an object of the correct type
-                T ret = *reinterpret_cast<T*>(in.data());
-                return ret;
+            static inline T deserialise(const std::vector<uint8_t>& in) {
+                if (in.size() != sizeof(T)) {
+                    throw std::length_error("Serialised data is not the correct size");
+                }
+                return *reinterpret_cast<const T*>(in.data());
             }
 
             static inline uint64_t hash() {
 
                 // Serialise based on the demangled class name
-                std::string type_name = demangle(typeid(T).name());
-                return XXH64(type_name.c_str(), type_name.size(), 0x4e55436c);
+                const std::string type_name = demangle(typeid(T).name());
+                return xxhash64(type_name.c_str(), type_name.size(), 0x4e55436c);
             }
         };
 
-        // Iterable of pod
+        // Iterable of trivially copyable data
         template <typename T>
-        struct Serialise<
-            T,
-            std::enable_if_t<
-                std::is_same<typename std::iterator_traits<decltype(std::declval<T>().begin())>::iterator_category,
-                             std::random_access_iterator_tag>::value,
-                T>> {
+        using iterator_value_type_t =
+            typename std::iterator_traits<decltype(std::begin(std::declval<T>()))>::value_type;
+        template <typename T>
+        struct Serialise<T, std::enable_if_t<std::is_trivially_copyable<iterator_value_type_t<T>>::value, T>> {
 
-            using StoredType = std::remove_reference_t<decltype(*std::declval<T>().begin())>;
+            using V = std::remove_reference_t<iterator_value_type_t<T>>;
 
-            static inline std::vector<char> serialise(const T& in) {
-                std::vector<char> out;
-                out.reserve(std::size_t(std::distance(in.begin(), in.end())));
+            static inline std::vector<uint8_t> serialise(const T& in) {
+                std::vector<uint8_t> out;
+                out.reserve(sizeof(V) * size_t(std::distance(std::begin(in), std::end(in))));
 
-                for (const StoredType& item : in) {
+                for (const V& item : in) {
                     const char* i = reinterpret_cast<const char*>(&item);
                     out.insert(out.end(), i, i + sizeof(decltype(item)));
                 }
@@ -91,13 +97,17 @@ namespace util {
                 return out;
             }
 
-            static inline T deserialise(const std::vector<char>& in) {
+            static inline T deserialise(const std::vector<uint8_t>& in) {
+
+                if (in.size() % sizeof(V) != 0) {
+                    throw std::length_error("Serialised data is not the correct size");
+                }
 
                 T out;
 
-                const StoredType* data = reinterpret_cast<const StoredType*>(in.data());
+                const auto* data = reinterpret_cast<const V*>(in.data());
 
-                out.insert(out.end(), data, data + (in.size() / sizeof(StoredType)));
+                out.insert(out.end(), data, data + (in.size() / sizeof(V)));
 
                 return out;
             }
@@ -106,7 +116,7 @@ namespace util {
 
                 // Serialise based on the demangled class name
                 std::string type_name = demangle(typeid(T).name());
-                return XXH64(type_name.c_str(), type_name.size(), 0x4e55436c);
+                return xxhash64(type_name.c_str(), type_name.size(), 0x4e55436c);
             }
         };
 
@@ -117,14 +127,14 @@ namespace util {
                                               || std::is_base_of<::google::protobuf::MessageLite, T>::value,
                                           T>> {
 
-            static inline std::vector<char> serialise(const T& in) {
-                std::vector<char> output(in.ByteSize());
+            static inline std::vector<uint8_t> serialise(const T& in) {
+                std::vector<uint8_t> output(in.ByteSize());
                 in.SerializeToArray(output.data(), output.size());
 
                 return output;
             }
 
-            static inline T deserialise(const std::vector<char>& in) {
+            static inline T deserialise(const std::vector<uint8_t>& in) {
                 // Make a buffer
                 T out;
 
@@ -138,7 +148,7 @@ namespace util {
                 // We have to construct an instance to call the reflection functions
                 T type;
                 // We base the hash on the name of the protocol buffer
-                return XXH64(type.GetTypeName().c_str(), type.GetTypeName().size(), 0x4e55436c);
+                return xxhash64(type.GetTypeName().c_str(), type.GetTypeName().size(), 0x4e55436c);
             }
         };
 

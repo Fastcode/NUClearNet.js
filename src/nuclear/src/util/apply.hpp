@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -41,7 +45,7 @@ namespace util {
      * @tparam S the integer pack giving the ordinal position of the tuple value to get
      */
     template <typename Function, int... S, typename... Arguments>
-    void apply(Function&& function, const std::tuple<Arguments...>&& args, const Sequence<S...>&) {
+    void apply(Function&& function, const std::tuple<Arguments...>&& args, const Sequence<S...>& /*s*/) {
 
         // Get each of the values from the tuple, dereference them and call the function with them
         // Also ensure that each value is a const reference

@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -50,8 +54,6 @@ namespace dsl {
          *  <b>IDLE:</b>  Tasks assigned with this priority will be queued with all other IDLE tasks.  They will be
          *  scheduled for execution when there are no other tasks running in the system.
          *
-         *  For best use, this word should be fused with at least one other binding DSL word.
-         *
          * @par Default Behaviour
          *  @code on<Trigger<T>>() @endcode
          *  When the priority is not specified, tasks will be assigned a default setting; NORMAL.
@@ -70,7 +72,7 @@ namespace dsl {
                 static constexpr int value = 1000;
 
                 template <typename DSL>
-                static inline int priority(threading::Reaction&) {
+                static inline int priority(const threading::Reaction& /*reaction*/) {
                     return value;
                 }
             };
@@ -80,7 +82,7 @@ namespace dsl {
                 static constexpr int value = 750;
 
                 template <typename DSL>
-                static inline int priority(threading::Reaction&) {
+                static inline int priority(const threading::Reaction& /*reaction*/) {
                     return value;
                 }
             };
@@ -90,7 +92,7 @@ namespace dsl {
                 static constexpr int value = 500;
 
                 template <typename DSL>
-                static inline int priority(threading::Reaction&) {
+                static inline int priority(const threading::Reaction& /*reaction*/) {
                     return value;
                 }
             };
@@ -100,7 +102,7 @@ namespace dsl {
                 static constexpr int value = 250;
 
                 template <typename DSL>
-                static inline int priority(threading::Reaction&) {
+                static inline int priority(const threading::Reaction& /*reaction*/) {
                     return value;
                 }
             };
@@ -110,7 +112,7 @@ namespace dsl {
                 static constexpr int value = 0;
 
                 template <typename DSL>
-                static inline int priority(threading::Reaction&) {
+                static inline int priority(const threading::Reaction& /*reaction*/) {
                     return value;
                 }
             };

@@ -1,18 +1,24 @@
-# Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com> 2014-2017 Trent
-# Houliston <trent@houliston.me>
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
-# documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
-# rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
-# persons to whom the Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
-# Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
-# WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-# OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#[[
+MIT License
+
+Copyright (c) 2013 NUClear Contributors
+
+This file is part of the NUClear codebase.
+See https://github.com/Fastcode/NUClear for further info.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+]]
 
 include(CMakeParseArguments)
 function(ToolchainLibraryFinder)
@@ -20,15 +26,14 @@ function(ToolchainLibraryFinder)
   # Extract the arguments from our function call
   set(options, "")
   set(oneValueArgs "NAME")
-  set(
-    multiValueArgs
-    "HEADER"
-    "LIBRARY"
-    "PATH_SUFFIX"
-    "BINARY"
-    "VERSION_FILE"
-    "VERSION_BINARY_ARGUMENTS"
-    "VERSION_REGEX"
+  set(multiValueArgs
+      "HEADER"
+      "LIBRARY"
+      "PATH_SUFFIX"
+      "BINARY"
+      "VERSION_FILE"
+      "VERSION_BINARY_ARGUMENTS"
+      "VERSION_REGEX"
   )
   cmake_parse_arguments(PACKAGE "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -48,7 +53,10 @@ function(ToolchainLibraryFinder)
 
     # Setup and export our variables
     set(required_vars ${required_vars} "${PACKAGE_NAME}_INCLUDE_DIR")
-    set(${PACKAGE_NAME}_INCLUDE_DIRS ${${PACKAGE_NAME}_INCLUDE_DIR} PARENT_SCOPE)
+    set(${PACKAGE_NAME}_INCLUDE_DIRS
+        ${${PACKAGE_NAME}_INCLUDE_DIR}
+        PARENT_SCOPE
+    )
     mark_as_advanced(${PACKAGE_NAME}_INCLUDE_DIR ${PACKAGE_NAME}_INCLUDE_DIRS)
 
   endif(PACKAGE_HEADER)
@@ -64,7 +72,10 @@ function(ToolchainLibraryFinder)
 
     # Setup and export our variables
     set(required_vars ${required_vars} "${PACKAGE_NAME}_LIBRARY")
-    set(${PACKAGE_NAME}_LIBRARIES ${${PACKAGE_NAME}_LIBRARY} PARENT_SCOPE)
+    set(${PACKAGE_NAME}_LIBRARIES
+        ${${PACKAGE_NAME}_LIBRARY}
+        PARENT_SCOPE
+    )
     mark_as_advanced(${PACKAGE_NAME}_LIBRARY ${PACKAGE_NAME}_LIBRARIES)
 
   endif(PACKAGE_LIBRARY)
@@ -80,7 +91,10 @@ function(ToolchainLibraryFinder)
 
     # Setup and export our variables
     set(required_vars ${required_vars} "${PACKAGE_NAME}_BINARY")
-    set(${PACKAGE_NAME}_BINARY ${${PACKAGE_NAME}_BINARY} PARENT_SCOPE)
+    set(${PACKAGE_NAME}_BINARY
+        ${${PACKAGE_NAME}_BINARY}
+        PARENT_SCOPE
+    )
     mark_as_advanced(${PACKAGE_NAME}_BINARY)
 
   endif(PACKAGE_BINARY)
@@ -97,7 +111,9 @@ function(ToolchainLibraryFinder)
     # Execute our binary to get a version string
     if(PACKAGE_VERSION_BINARY_ARGUMENTS AND PACKAGE_BINARY)
       exec_program(
-        ${${PACKAGE_NAME}_BINARY} ARGS ${PACKAGE_VERSION_BINARY_ARGUMENTS} OUTPUT_VARIABLE full_version_string
+        ${${PACKAGE_NAME}_BINARY} ARGS
+        ${PACKAGE_VERSION_BINARY_ARGUMENTS}
+        OUTPUT_VARIABLE full_version_string
       )
     endif(PACKAGE_VERSION_BINARY_ARGUMENTS AND PACKAGE_BINARY)
 
@@ -114,16 +130,15 @@ function(ToolchainLibraryFinder)
   include(FindPackageHandleStandardArgs)
   find_package_handle_standard_args(
     ${PACKAGE_NAME}
-    FOUND_VAR
-    ${PACKAGE_NAME}_FOUND
-    REQUIRED_VARS
-    ${required_vars}
-    VERSION_VAR
-    ${PACKAGE_NAME}_VERSION
-    # VERSION_VAR "${MAJOR}.${MINOR}.${PATCH}")
+    FOUND_VAR ${PACKAGE_NAME}_FOUND
+    REQUIRED_VARS ${required_vars}
+    VERSION_VAR ${PACKAGE_NAME}_VERSION # VERSION_VAR "${MAJOR}.${MINOR}.${PATCH}")
   )
 
   # Export our found variable to parent scope
-  set(${PACKAGE_NAME}_FOUND ${PACKAGE_NAME}_FOUND PARENT_SCOPE)
+  set(${PACKAGE_NAME}_FOUND
+      ${PACKAGE_NAME}_FOUND
+      PARENT_SCOPE
+  )
 
 endfunction(ToolchainLibraryFinder)

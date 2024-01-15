@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -32,34 +36,30 @@ namespace util {
         static constexpr int length = sizeof...(S);
     };
 
-    // Anonymous
-    namespace {
+    /**
+     * @brief Generate a sequence of numbers between a start and an end, this is the entry case
+     */
+    template <int Start, int End, typename Seq = Sequence<>>
+    struct GenSequence;
 
-        /**
-         * @brief Generate a sequence of numbers between a start and an end, this is the entry case
-         */
-        template <int Start, int End, typename Seq = Sequence<>>
-        struct GenSequence;
+    /**
+     * Generates sequence
+     */
+    template <int Start, int End, int... Seq>
+    struct GenSequence<Start, End, Sequence<Seq...>>
+        : std::conditional_t<(Start > End),
+                             GenSequence<0,
+                                         0>  // If we have been given an invalid sequence, just return an empty one
+                             ,
+                             GenSequence<Start + 1, End, Sequence<Seq..., Start>>> {};
 
-        /**
-         * Generates sequence
-         */
-        template <int Start, int End, int... Seq>
-        struct GenSequence<Start, End, Sequence<Seq...>>
-            : std::conditional_t<(Start > End),
-                                 GenSequence<0,
-                                             0>  // If we have been given an invalid sequence, just return an empty one
-                                 ,
-                                 GenSequence<Start + 1, End, Sequence<Seq..., Start>>> {};
-
-        /**
-         * Runs when start and end are the same, terminates
-         */
-        template <int StartAndEnd, int... Seq>
-        struct GenSequence<StartAndEnd, StartAndEnd, Sequence<Seq...>> {
-            using type = Sequence<Seq...>;
-        };
-    }  // namespace
+    /**
+     * Runs when start and end are the same, terminates
+     */
+    template <int StartAndEnd, int... Seq>
+    struct GenSequence<StartAndEnd, StartAndEnd, Sequence<Seq...>> {
+        using type = Sequence<Seq...>;
+    };
 
     /**
      * @brief Holds a generated integer sequence of numbers as a variadic pack.

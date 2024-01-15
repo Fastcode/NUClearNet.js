@@ -21,7 +21,7 @@
 
 namespace NUClear {
 NetworkListener::NetworkListener(Napi::Env& env, NetworkBinding* binding)
-: Napi::AsyncProgressWorker<char>(env), binding(binding) {
+    : Napi::AsyncProgressWorker<char>(env), binding(binding) {
     std::vector<NUClear::fd_t> notifyfds = this->binding->net.listen_fds();
 
 #ifdef _WIN32
@@ -29,9 +29,7 @@ NetworkListener::NetworkListener(Napi::Env& env, NetworkBinding* binding)
     for (auto& fd : notifyfds) {
         auto event = WSACreateEvent();
         if (event == WSA_INVALID_EVENT) {
-            throw std::system_error(WSAGetLastError(),
-                                    std::system_category(),
-                                    "WSACreateEvent() for notify fd failed");
+            throw std::system_error(WSAGetLastError(), std::system_category(), "WSACreateEvent() for notify fd failed");
         }
 
         if (WSAEventSelect(fd, event, FD_READ | FD_CLOSE) == SOCKET_ERROR) {
@@ -61,7 +59,8 @@ NetworkListener::~NetworkListener() {
 #ifdef _WIN32
     for (auto& event : this->events) {
         if (!WSACloseEvent(event)) {
-            std::cerr << "[NUClearNet.js NetworkListener] WSACloseEvent() failed, error code " << WSAGetLastError() << std::endl;
+            std::cerr << "[NUClearNet.js NetworkListener] WSACloseEvent() failed, error code " << WSAGetLastError()
+                      << std::endl;
         }
     }
 #endif
@@ -76,28 +75,30 @@ void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionPr
 
 #ifdef _WIN32
         // Wait for events and check for shutdown
-        auto event_index = WSAWaitForMultipleEvents(this->events.size(), this->events.data(), false, WSA_INFINITE, false);
+        auto event_index =
+            WSAWaitForMultipleEvents(this->events.size(), this->events.data(), false, WSA_INFINITE, false);
 
         // Check if the return value is an event in our list
         if (event_index >= WSA_WAIT_EVENT_0 && event_index < WSA_WAIT_EVENT_0 + this->events.size()) {
             // Get the signalled event
-            auto& event  = this->events[event_index - WSA_WAIT_EVENT_0];
+            auto& event = this->events[event_index - WSA_WAIT_EVENT_0];
 
             if (event == this->notifier) {
                 // Reset the notifier signal
                 if (!WSAResetEvent(event)) {
-                    throw std::system_error(
-                        WSAGetLastError(), std::system_category(), "WSAResetEvent() for notifier failed");
+                    throw std::system_error(WSAGetLastError(),
+                                            std::system_category(),
+                                            "WSAResetEvent() for notifier failed");
                 }
-            } else {
+            }
+            else {
                 // Get the corresponding fd for the event
                 auto& fd = this->fds[event_index - WSA_WAIT_EVENT_0];
 
                 // Enumumerate the socket events to work out which ones fired
                 WSANETWORKEVENTS wsne;
                 if (WSAEnumNetworkEvents(fd, event, &wsne) == SOCKET_ERROR) {
-                    throw std::system_error(
-                        WSAGetLastError(), std::system_category(), "WSAEnumNetworkEvents() failed");
+                    throw std::system_error(WSAGetLastError(), std::system_category(), "WSAEnumNetworkEvents() failed");
                 }
 
                 // Exit the run loop if the fd was closed
@@ -128,16 +129,20 @@ void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionPr
         // Notify the system something happened if we're running and have data to read.
         // Will trigger OnProgress() below to read the data.
         if (run && data) {
-            // Should really be `p.Signal()` here, but it has a bug at the moment
-            // See https://github.com/nodejs/node-addon-api/issues/1081
-            p.Send(nullptr, 0);
+            p.Signal();
         }
     }
 }
 
 void NetworkListener::OnProgress(const char*, size_t) {
     // If we're here in OnProgress(), then there's data to process
-    this->binding->net.process();
+    try {
+        this->binding->net.process();
+    }
+    catch (const std::exception&) {
+        // We can't throw to javascript as we are in another thread
+        // Still we don't want to crash the process so swallow the exception
+    }
 }
 
 void NetworkListener::OnOK() {}

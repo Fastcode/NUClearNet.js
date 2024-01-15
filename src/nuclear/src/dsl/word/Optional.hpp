@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,6 +23,7 @@
 #ifndef NUCLEAR_DSL_WORD_OPTIONAL_HPP
 #define NUCLEAR_DSL_WORD_OPTIONAL_HPP
 
+#include "../../threading/Reaction.hpp"
 namespace NUClear {
 namespace dsl {
     namespace word {
@@ -26,7 +31,7 @@ namespace dsl {
         template <typename T>
         struct OptionalWrapper {
 
-            OptionalWrapper(T&& d) : d(std::forward<T>(d)) {}
+            explicit OptionalWrapper(T&& d) : d(std::move(d)) {}
 
             T operator*() const {
                 return std::move(d);
@@ -51,7 +56,7 @@ namespace dsl {
          *  the subscribing reaction.  However, should T2 not be present, the task will run without a reference to
          *  this data.
          *
-         *  This word is a modifier, and should  be used to modify any "Get" DSL word.
+         *  This word is a modifier, and should be used to modify any "Get" DSL word.
          *
          *@par Implements
          *  Modification
@@ -64,24 +69,24 @@ namespace dsl {
 
         private:
             template <typename... T, int... Index>
-            static inline auto wrap(std::tuple<T...>&& data, util::Sequence<Index...>)
+            static inline auto wrap(std::tuple<T...>&& data, util::Sequence<Index...> /*s*/)
                 -> decltype(std::make_tuple(OptionalWrapper<T>(std::move(std::get<Index>(data)))...)) {
                 return std::make_tuple(OptionalWrapper<T>(std::move(std::get<Index>(data)))...);
             }
 
         public:
             template <typename DSL>
-            static inline auto get(threading::Reaction& r)
-                -> decltype(wrap(Fusion<DSLWords...>::template get<DSL>(r),
-                                 util::GenerateSequence<0,
-                                                        std::tuple_size<decltype(
-                                                            Fusion<DSLWords...>::template get<DSL>(r))>::value>())) {
+            static inline auto get(threading::Reaction& reaction) -> decltype(wrap(
+                Fusion<DSLWords...>::template get<DSL>(reaction),
+                util::GenerateSequence<
+                    0,
+                    std::tuple_size<decltype(Fusion<DSLWords...>::template get<DSL>(reaction))>::value>())) {
 
                 // Wrap all of our data in optional wrappers
-                return wrap(Fusion<DSLWords...>::template get<DSL>(r),
-                            util::GenerateSequence<0,
-                                                   std::tuple_size<decltype(
-                                                       Fusion<DSLWords...>::template get<DSL>(r))>::value>());
+                return wrap(Fusion<DSLWords...>::template get<DSL>(reaction),
+                            util::GenerateSequence<
+                                0,
+                                std::tuple_size<decltype(Fusion<DSLWords...>::template get<DSL>(reaction))>::value>());
             }
         };
 

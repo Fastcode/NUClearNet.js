@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -47,33 +51,32 @@ namespace extension {
             network.set_packet_callback([this](const network::NUClearNetwork::NetworkTarget& remote,
                                                const uint64_t& hash,
                                                const bool& reliable,
-                                               std::vector<char>&& payload) {
+                                               std::vector<uint8_t>&& payload) {
                 // Construct our NetworkSource information
-                dsl::word::NetworkSource src;
-                src.name     = remote.name;
-                src.address  = remote.target;
-                src.reliable = reliable;
+                dsl::word::NetworkSource src{remote.name, remote.target, reliable};
+
+                // Move the payload in as we are stealing it
+                std::vector<uint8_t> p(std::move(payload));
 
                 // Store in our thread local cache
-                dsl::store::ThreadStore<std::vector<char>>::value        = &payload;
+                dsl::store::ThreadStore<std::vector<uint8_t>>::value        = &p;
                 dsl::store::ThreadStore<dsl::word::NetworkSource>::value = &src;
 
                 /* Mutex Scope */ {
                     // Lock our reaction mutex
-                    std::lock_guard<std::mutex> lock(reaction_mutex);
+                    const std::lock_guard<std::mutex> lock(reaction_mutex);
 
                     // Find interested reactions
                     auto rs = reactions.equal_range(hash);
 
                     // Execute on our interested reactions
                     for (auto it = rs.first; it != rs.second; ++it) {
-                        auto task = it->second->get_task();
-                        if (task) { powerplant.submit(std::move(task)); }
+                        powerplant.submit(it->second->get_task());
                     }
                 }
 
                 // Clear our cache
-                dsl::store::ThreadStore<std::vector<char>>::value        = nullptr;
+                dsl::store::ThreadStore<std::vector<uint8_t>>::value        = nullptr;
                 dsl::store::ThreadStore<dsl::word::NetworkSource>::value = nullptr;
             });
 
@@ -95,13 +98,15 @@ namespace extension {
 
             // Set our event timer callback
             network.set_next_event_callback([this](std::chrono::steady_clock::time_point t) {
-                emit<Scope::DELAY>(std::make_unique<ProcessNetwork>(), t - std::chrono::steady_clock::now());
+                const std::chrono::steady_clock::duration emit_offset = t - std::chrono::steady_clock::now();
+                emit<Scope::DELAY>(std::make_unique<ProcessNetwork>(),
+                                   std::chrono::duration_cast<NUClear::clock::duration>(emit_offset));
             });
 
             // Start listening for a new network type
             on<Trigger<NetworkListen>>().then("Network Bind", [this](const NetworkListen& l) {
                 // Lock our reaction mutex
-                std::lock_guard<std::mutex> lock(reaction_mutex);
+                const std::lock_guard<std::mutex> lock(reaction_mutex);
 
                 // Insert our new reaction
                 reactions.insert(std::make_pair(l.hash, l.reaction));
@@ -110,7 +115,7 @@ namespace extension {
             // Stop listening for a network type
             on<Trigger<Unbind>>().then("Network Unbind", [this](const Unbind& unbind) {
                 // Lock our reaction mutex
-                std::lock_guard<std::mutex> lock(reaction_mutex);
+                const std::lock_guard<std::mutex> lock(reaction_mutex);
 
                 // Find and delete this reaction
                 for (auto it = reactions.begin(); it != reactions.end(); ++it) {
@@ -130,7 +135,9 @@ namespace extension {
             // Configure the NUClearNetwork options
             on<Trigger<NetworkConfiguration>>().then([this](const NetworkConfiguration& config) {
                 // Unbind our announce handle
-                if (process_handle) { process_handle.unbind(); }
+                if (process_handle) {
+                    process_handle.unbind();
+                }
 
                 // Unbind all our listen handles
                 if (!listen_handles.empty()) {
@@ -140,14 +147,11 @@ namespace extension {
                     listen_handles.clear();
                 }
 
-                // Read the new configuration
-                std::string name             = config.name.empty() ? util::get_hostname() : config.name;
-                std::string announce_address = config.announce_address;
-                in_port_t announce_port      = config.announce_port;
-                uint16_t mtu                 = config.mtu;
+                // Name becomes hostname by default if not set
+                const std::string name = config.name.empty() ? util::get_hostname() : config.name;
 
                 // Reset our network using this configuration
-                network.reset(name, announce_address, announce_port, mtu);
+                network.reset(name, config.announce_address, config.announce_port, config.bind_address, config.mtu);
 
                 // Execution handle
                 process_handle =
@@ -161,17 +165,17 @@ namespace extension {
 
     private:
         /// Our NUClearNetwork object that handles the networking
-        network::NUClearNetwork network;
+        network::NUClearNetwork network{};
 
         /// The reaction that handles timed events from the network
-        ReactionHandle process_handle;
+        ReactionHandle process_handle{};
         /// The reactions that listen for io
-        std::vector<ReactionHandle> listen_handles;
+        std::vector<ReactionHandle> listen_handles{};
 
         /// Mutex to guard the list of reactions
         std::mutex reaction_mutex;
         /// Map of type hashes to reactions that are interested in them
-        std::multimap<uint64_t, std::shared_ptr<threading::Reaction>> reactions;
+        std::multimap<uint64_t, std::shared_ptr<threading::Reaction>> reactions{};
     };
 
 }  // namespace extension

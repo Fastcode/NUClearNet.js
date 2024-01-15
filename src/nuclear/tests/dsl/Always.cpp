@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2014 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,36 +23,67 @@
 #include <catch.hpp>
 #include <nuclear>
 
+#include "test_util/TestBase.hpp"
+
 namespace {
 
-int i = 0;
+/// @brief Events that occur during the test
+std::vector<std::string> events;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
-class TestReactor : public NUClear::Reactor {
+struct SimpleMessage {};
+
+class TestReactor : public test_util::TestBase<TestReactor> {
 public:
-    TestReactor(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)) {
+    TestReactor(std::unique_ptr<NUClear::Environment> environment) : TestBase(std::move(environment), false) {
 
         on<Always>().then([this] {
-            ++i;
+            if (i < 10) {
+                events.push_back("Always " + std::to_string(i));
+                ++i;
+            }
+            else if (i == 10) {
+                emit(std::make_unique<SimpleMessage>());
+            }
+        });
 
-            // Run until it's 11 then shutdown
-            if (i > 10) { powerplant.shutdown(); }
+        on<Always, With<SimpleMessage>>().then([this] {
+            events.push_back("Always with SimpleMessage " + std::to_string(i));
+
+            // We need to shutdown manually as the default pool will always be idle
+            powerplant.shutdown();
         });
     }
+
+    /// Counter for the number of times we have run
+    int i = 0;
 };
 }  // namespace
 
-TEST_CASE("Testing on<Always> functionality (permanant run)", "[api][always]") {
+TEST_CASE("The Always DSL keyword runs continuously when it can", "[api][always]") {
 
-    NUClear::PowerPlant::Configuration config;
+    NUClear::Configuration config;
     config.thread_count = 1;
     NUClear::PowerPlant plant(config);
-
-    // We are installing with an initial log level of debug
-    plant.install<TestReactor, NUClear::DEBUG>();
-
-    plant.emit(std::make_unique<int>(5));
-
+    plant.install<TestReactor>();
     plant.start();
 
-    REQUIRE(i == 11);
+    const std::vector<std::string> expected = {
+        "Always 0",
+        "Always 1",
+        "Always 2",
+        "Always 3",
+        "Always 4",
+        "Always 5",
+        "Always 6",
+        "Always 7",
+        "Always 8",
+        "Always 9",
+        "Always with SimpleMessage 10",
+    };
+
+    // Make an info print the diff in an easy to read way if we fail
+    INFO(test_util::diff_string(expected, events));
+
+    // Check the events fired in order and only those events
+    REQUIRE(events == expected);
 }

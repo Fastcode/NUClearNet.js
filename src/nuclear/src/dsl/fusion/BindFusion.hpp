@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2014 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -60,23 +64,24 @@ namespace dsl {
                 static inline std::tuple<> call(const std::shared_ptr<threading::Reaction>& reaction,
                                                 Arguments&&... args) {
                     Function::template bind<DSL>(reaction, std::forward<Arguments>(args)...);
-                    return std::tuple<>();
+                    return {};
                 }
             };
 
 
             template <typename... Arguments>
             static inline auto call(const std::shared_ptr<threading::Reaction>& reaction, Arguments&&... args)
-                -> decltype(
-                    std::conditional_t<std::is_void<decltype(Function::template bind<
-                                                             DSL>(reaction, std::forward<Arguments>(args)...))>::value,
-                                       NoReturn,
-                                       Return>::template call(reaction, std::forward<Arguments>(args)...)) {
+                -> decltype(std::conditional_t<std::is_void<decltype(Function::template bind<DSL>(
+                                                   reaction,
+                                                   std::forward<Arguments>(args)...))>::value,
+                                               NoReturn,
+                                               Return>::template call(reaction, std::forward<Arguments>(args)...)) {
 
-                return std::conditional_t<std::is_void<decltype(Function::template bind<DSL>(
-                                              reaction, std::forward<Arguments>(args)...))>::value,
-                                          NoReturn,
-                                          Return>::template call(reaction, std::forward<Arguments>(args)...);
+                return std::conditional_t<
+                    std::is_void<decltype(Function::template bind<DSL>(reaction,
+                                                                       std::forward<Arguments>(args)...))>::value,
+                    NoReturn,
+                    Return>::template call(reaction, std::forward<Arguments>(args)...);
             }
         };
 
@@ -122,12 +127,12 @@ namespace dsl {
 
             template <typename DSL, typename... Arguments>
             static inline auto bind(const std::shared_ptr<threading::Reaction>& reaction, Arguments&&... args)
-                -> decltype(
-                    util::FunctionFusion<std::tuple<Word1, WordN...>,
-                                         decltype(std::forward_as_tuple(reaction, std::forward<Arguments>(args)...)),
-                                         BindCaller,
-                                         std::tuple<DSL>,
-                                         1>::call(reaction, std::forward<Arguments>(args)...)) {
+                -> decltype(util::FunctionFusion<std::tuple<Word1, WordN...>,
+                                                 decltype(std::forward_as_tuple(reaction,
+                                                                                std::forward<Arguments>(args)...)),
+                                                 BindCaller,
+                                                 std::tuple<DSL>,
+                                                 1>::call(reaction, std::forward<Arguments>(args)...)) {
 
                 // Perform our function fusion
                 return util::FunctionFusion<std::tuple<Word1, WordN...>,

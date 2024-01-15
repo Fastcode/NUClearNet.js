@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2016 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -20,6 +24,7 @@
 #define NUCLEAR_DSL_OPERATION_CHRONOTASK_HPP
 
 #include "../../clock.hpp"
+#include "../../id.hpp"
 
 namespace NUClear {
 namespace dsl {
@@ -42,12 +47,12 @@ namespace dsl {
              * @param task  the task to run, takes the time to execute as a reference so it can be updated for
              *              future runs
              * @param time  the time to execute this task
-             * @param id    the unique identifer for this task
+             * @param id    the unique identifier for this task
              */
             ChronoTask(std::function<bool(NUClear::clock::time_point&)>&& task,
-                       NUClear::clock::time_point time,
-                       uint64_t id)
-                : task(task), time(time), id(id) {}
+                       const NUClear::clock::time_point& time,
+                       const NUClear::id_t& id)
+                : task(std::move(task)), time(time), id(id) {}
 
             /**
              * @brief Run the task and return true if the time has been updated to run again
@@ -96,7 +101,7 @@ namespace dsl {
             /// The time this task should be executed
             NUClear::clock::time_point time;
             /// The unique identifier for this task so it can be unbound
-            uint64_t id;
+            NUClear::id_t id{0};
         };
 
     }  // namespace operation

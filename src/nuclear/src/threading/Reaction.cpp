@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -15,24 +19,17 @@
  * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#include "Reaction.hpp"
 
-#include <utility>
+#include "Reaction.hpp"
 
 namespace NUClear {
 namespace threading {
 
     // Initialize our reaction source
-    std::atomic<uint64_t> Reaction::reaction_id_source(0);  // NOLINT
+    std::atomic<NUClear::id_t> Reaction::reaction_id_source(0);  // NOLINT
 
-    Reaction::Reaction(Reactor& reactor, std::vector<std::string>&& identifier, TaskGenerator&& generator)
-        : reactor(reactor)
-        , identifier(identifier)
-        , id(++reaction_id_source)
-        , emit_stats(true)
-        , active_tasks(0)
-        , enabled(true)
-        , generator(generator) {}
+    Reaction::Reaction(Reactor& reactor, ReactionIdentifiers&& identifiers, TaskGenerator&& generator)
+        : reactor(reactor), identifiers(std::move(identifiers)), generator(std::move(generator)) {}
 
     void Reaction::unbind() {
         // Unbind
@@ -41,24 +38,7 @@ namespace threading {
         }
     }
 
-    std::unique_ptr<ReactionTask> Reaction::get_task() {
-
-        // If we are not enabled, don't run
-        if (!enabled) { return std::unique_ptr<ReactionTask>(nullptr); }
-
-        // Run our generator to get a functor we can run
-        int priority;
-        std::function<std::unique_ptr<ReactionTask>(std::unique_ptr<ReactionTask> &&)> func;
-        std::tie(priority, func) = generator(*this);
-
-        // If our generator returns a valid function
-        if (func) { return std::make_unique<ReactionTask>(*this, priority, std::move(func)); }
-
-        // Otherwise we return a null pointer
-        return std::unique_ptr<ReactionTask>(nullptr);
-    }
-
-    bool Reaction::is_enabled() {
+    bool Reaction::is_enabled() const {
         return enabled;
     }
 }  // namespace threading

@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2017 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -47,64 +51,59 @@ namespace extension {
         public:
             struct NetworkTarget {
 
-                NetworkTarget(std::string name,
-                              sock_t target,
-                              std::chrono::steady_clock::time_point last_update = std::chrono::steady_clock::now())
-                    : name(name)
-                    , target(target)
-                    , last_update(last_update)
-                    , recent_packets()
-                    , recent_packets_index(0)
-                    , assemblers_mutex()
-                    , assemblers()
-                    , round_trip_kf()
-                    , round_trip_time(std::chrono::seconds(1)) {
+                NetworkTarget(
+                    std::string name,
+                    const sock_t& target,
+                    const std::chrono::steady_clock::time_point& last_update = std::chrono::steady_clock::now())
+                    : name(std::move(name)), target(target), last_update(last_update) {
 
                     // Set our recent packets to an invalid value
                     recent_packets.fill(-1);
                 }
 
                 /// The name of the remote target
-                std::string name;
+                std::string name{};
                 /// The socket address for the remote target
-                sock_t target;
+                sock_t target{};
                 /// When we last received data from the remote target
-                std::chrono::steady_clock::time_point last_update;
+                std::chrono::steady_clock::time_point last_update{};
                 /// A list of the last n packet groups to be received
-                std::array<int, std::numeric_limits<uint8_t>::max()> recent_packets;
+                std::array<int, std::numeric_limits<uint8_t>::max()> recent_packets{};
                 /// An index for the recent_packets (circular buffer)
-                std::atomic<uint8_t> recent_packets_index;
+                std::atomic<uint8_t> recent_packets_index{0};
                 /// Mutex to protect the fragmented packet storage
                 std::mutex assemblers_mutex;
                 /// Storage for fragmented packets while we build them
                 std::map<uint16_t,
-                         std::pair<std::chrono::steady_clock::time_point, std::map<uint16_t, std::vector<char>>>>
-                    assemblers;
+                         std::pair<std::chrono::steady_clock::time_point, std::map<uint16_t, std::vector<uint8_t>>>>
+                    assemblers{};
 
-                /// A little kalman filter for estimating round trip time
+                /// Struct storing the kalman filter for round trip time
                 struct RoundTripKF {
                     float process_noise     = 1e-6f;
                     float measurement_noise = 1e-1f;
                     float variance          = 1.0f;
                     float mean              = 1.0f;
-                } round_trip_kf;
+                };
+                /// A little kalman filter for estimating round trip time
+                RoundTripKF round_trip_kf{};
 
-                std::chrono::steady_clock::duration round_trip_time;
+                std::chrono::steady_clock::duration round_trip_time{std::chrono::seconds(1)};
 
                 inline void measure_round_trip(std::chrono::steady_clock::duration time) {
 
                     // Make our measurement into a float seconds type
-                    std::chrono::duration<float, std::ratio<1>> m =
+                    const std::chrono::duration<float, std::ratio<1>> m =
                         std::chrono::duration_cast<std::chrono::duration<float, std::ratio<1>>>(time);
 
                     // Alias variables
-                    auto& Q = round_trip_kf.process_noise;
-                    auto& R = round_trip_kf.measurement_noise;
-                    auto& P = round_trip_kf.variance;
-                    auto& X = round_trip_kf.mean;
+                    const auto& Q = round_trip_kf.process_noise;
+                    const auto& R = round_trip_kf.measurement_noise;
+                    auto& P       = round_trip_kf.variance;
+                    auto& X       = round_trip_kf.mean;
 
                     // Calculate our kalman gain
-                    float K = (P + Q) / (P + Q + R);
+                    const float K = (P + Q) / (P + Q + R);
 
                     // Do filter
                     P = R * (P + Q) / (R + P + Q);
@@ -116,8 +115,12 @@ namespace extension {
                 }
             };
 
-            explicit NUClearNetwork();
-            ~NUClearNetwork();
+            NUClearNetwork() = default;
+            virtual ~NUClearNetwork();
+            NUClearNetwork(const NUClearNetwork& /*other*/)              = delete;
+            NUClearNetwork(NUClearNetwork&& /*other*/) noexcept          = delete;
+            NUClearNetwork& operator=(const NUClearNetwork& /*rhs*/)     = delete;
+            NUClearNetwork& operator=(NUClearNetwork&& /*rhs*/) noexcept = delete;
 
             /**
              * @brief Send data using the NUClear network
@@ -127,7 +130,7 @@ namespace extension {
              * @param target        who we are sending to (blank means everyone)
              * @param reliable      if the delivery of the data should be ensured
              */
-            void send(const uint64_t& hash, const std::vector<char>& payload, const std::string& target, bool reliable);
+            void send(const uint64_t& hash, const std::vector<uint8_t>& payload, const std::string& target, bool reliable);
 
             /**
              * @brief Set the callback to use when a data packet is completed
@@ -135,7 +138,7 @@ namespace extension {
              * @param f the callback function
              */
             void set_packet_callback(
-                std::function<void(const NetworkTarget&, const uint64_t&, const bool&, std::vector<char>&&)> f);
+                std::function<void(const NetworkTarget&, const uint64_t&, const bool&, std::vector<uint8_t>&&)> f);
 
             /**
              * @brief Set the callback to use when a node joins the network
@@ -175,8 +178,14 @@ namespace extension {
              * @param name          the name of this node in the network
              * @param address       the address to announce on
              * @param port          the port to use for announcement
+             * @param bind_address  the address to bind to (if unset will bind to all interfaces)
              * @param network_mtu   the mtu of the network we operate on
              */
+            void reset(const std::string& name,
+                       const std::string& address,
+                       in_port_t port,
+                       const std::string& bind_address = "",
+                       uint16_t network_mtu            = 1500);
             void reset(const std::string& name,
                        const std::string& address,
                        in_port_t port,
@@ -203,46 +212,42 @@ namespace extension {
                     PacketTarget(std::weak_ptr<NetworkTarget> target, std::vector<uint8_t> acked);
 
                     /// The target we are sending this packet to
-                    std::weak_ptr<NetworkTarget> target;
+                    std::weak_ptr<NetworkTarget> target{};
 
                     /// The bitset of the packets that have been acked
-                    std::vector<uint8_t> acked;
+                    std::vector<uint8_t> acked{};
 
                     /// When we last sent data to this client
-                    std::chrono::steady_clock::time_point last_send;
+                    std::chrono::steady_clock::time_point last_send{};
                 };
 
                 /// Default constructor for the PacketQueue
                 PacketQueue();
 
                 /// The remote targets that want this packet
-                std::list<PacketTarget> targets;
+                std::list<PacketTarget> targets{};
 
                 /// The header of the packet to send
-                DataPacket header;
+                DataPacket header{};
 
                 /// The data to send
-                std::vector<char> payload;
+                std::vector<uint8_t> payload{};
             };
 
             /**
              * @brief Open our data udp socket
+             *
+             * @param bind_address the address to bind to or any to bind to all interfaces
              */
-            void open_data(const sock_t& announce_target);
+            void open_data(const sock_t& bind_address);
 
             /**
              * @brief Open our announce udp socket
-             */
-            void open_announce(const sock_t& announce_target);
-
-            /**
-             * @brief Read a single packet from the given udp file descriptor
              *
-             * @param fd the file descriptor to read from
-             *
-             * @return the data and who it was sent from
+             * @param announce_target the target to announce to
+             * @param bind_address    the address to bind to or any to bind to all interfaces
              */
-            std::pair<sock_t, std::vector<char>> read_socket(fd_t fd);
+            void open_announce(const sock_t& announce_target, const sock_t& bind_address);
 
             /**
              * @brief Processes the given packet and calls the callback if a packet was completed
@@ -250,7 +255,7 @@ namespace extension {
              * @param address   who the packet came from
              * @param data      the data that was sent in this packet
              */
-            void process_packet(const sock_t& address, std::vector<char>&& payload);
+            void process_packet(const sock_t& address, std::vector<uint8_t>&& payload);
 
             /**
              * @brief Send an announce packet to our announce address
@@ -274,7 +279,7 @@ namespace extension {
             void send_packet(const sock_t& target,
                              DataPacket header,
                              uint16_t packet_no,
-                             const std::vector<char>& payload,
+                             const std::vector<uint8_t>& payload,
                              const bool& reliable);
 
             /**
@@ -294,21 +299,21 @@ namespace extension {
             void remove_target(const std::shared_ptr<NetworkTarget>& target);
 
             /// The file descriptor for the socket we use to send data and receive regular data
-            fd_t data_fd;
+            fd_t data_fd{INVALID_SOCKET};
             /// The file descriptor for the socket we use to receive announce data
-            fd_t announce_fd;
+            fd_t announce_fd{INVALID_SOCKET};
 
             /// The largest packet of data we will transmit, based on our IP version and MTU
-            uint16_t packet_data_mtu;
+            uint16_t packet_data_mtu{1000};
 
             // Our announce packet
-            std::vector<char> announce_packet;
+            std::vector<uint8_t> announce_packet{};
 
             /// An atomic source for packet IDs to make sure they are semi unique
-            std::atomic<uint16_t> packet_id_source;
+            std::atomic<uint16_t> packet_id_source{0};
 
             /// The callback to execute when a data packet is completed
-            std::function<void(const NetworkTarget&, const uint64_t&, const bool&, std::vector<char>&&)>
+            std::function<void(const NetworkTarget&, const uint64_t&, const bool&, std::vector<uint8_t>&&)>
                 packet_callback;
             /// The callback to execute when a node joins the network
             std::function<void(const NetworkTarget&)> join_callback;
@@ -318,9 +323,9 @@ namespace extension {
             std::function<void(std::chrono::steady_clock::time_point)> next_event_callback;
 
             /// When we are next due to send an announce packet
-            std::chrono::steady_clock::time_point last_announce;
+            std::chrono::steady_clock::time_point last_announce{std::chrono::seconds(0)};
             /// When the next timed event is due
-            std::chrono::steady_clock::time_point next_event;
+            std::chrono::steady_clock::time_point next_event{std::chrono::seconds(0)};
 
             /// A mutex to guard modifications to the target lists
             /// NOTE: mutex lock order must always be this order to avoid deadlocks
@@ -335,7 +340,7 @@ namespace extension {
             std::list<std::shared_ptr<NetworkTarget>> targets;
 
             /// A map of string names to targets with that name
-            std::multimap<std::string, std::shared_ptr<NetworkTarget>> name_target;
+            std::multimap<std::string, std::shared_ptr<NetworkTarget>, std::less<>> name_target;
 
             /// A map of ip/port pairs to the network target they belong to
             std::map<std::array<uint16_t, 9>, std::shared_ptr<NetworkTarget>> udp_target;

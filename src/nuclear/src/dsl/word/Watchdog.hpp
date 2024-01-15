@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2016 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,6 +23,9 @@
 #ifndef NUCLEAR_DSL_WORD_WATCHDOG_HPP
 #define NUCLEAR_DSL_WORD_WATCHDOG_HPP
 
+#include <stdexcept>
+
+#include "../../threading/Reaction.hpp"
 #include "../../util/demangle.hpp"
 #include "../operation/Unbind.hpp"
 #include "../store/DataStore.hpp"
@@ -66,9 +73,9 @@ namespace dsl {
              */
             static const NUClear::clock::time_point& get(const RuntimeType& data) {
                 if (WatchdogStore::get() == nullptr || WatchdogStore::get()->count(data) == 0) {
-                    throw std::runtime_error("Store for <" + util::demangle(typeid(WatchdogGroup).name()) + ", "
-                                             + util::demangle(typeid(MapType).name())
-                                             + "> is trying to field a service call for an unknown data type");
+                    throw std::domain_error("Store for <" + util::demangle(typeid(WatchdogGroup).name()) + ", "
+                                            + util::demangle(typeid(MapType).name())
+                                            + "> is trying to field a service call for an unknown data type");
                 }
                 return WatchdogStore::get()->at(data);
             }
@@ -79,7 +86,9 @@ namespace dsl {
              * @param data The runtime argument for the current watchdog in the WatchdogGroup/RuntimeType group
              */
             static void unbind(const RuntimeType& data) {
-                if (WatchdogStore::get() != nullptr) { WatchdogStore::get()->erase(data); }
+                if (WatchdogStore::get() != nullptr) {
+                    WatchdogStore::get()->erase(data);
+                }
             }
         };
 
@@ -111,8 +120,8 @@ namespace dsl {
              */
             static const NUClear::clock::time_point& get() {
                 if (WatchdogStore::get() == nullptr) {
-                    throw std::runtime_error("Store for <" + util::demangle(typeid(WatchdogGroup).name())
-                                             + "> is trying to field a service call for an unknown data type");
+                    throw std::domain_error("Store for <" + util::demangle(typeid(WatchdogGroup).name())
+                                            + "> is trying to field a service call for an unknown data type");
                 }
                 return *WatchdogStore::get();
             }
@@ -121,7 +130,9 @@ namespace dsl {
              * @brief Cleans up any allocated storage for the WatchdogGroup watchdog
              */
             static void unbind() {
-                if (WatchdogStore::get() != nullptr) { WatchdogStore::get().reset(); }
+                if (WatchdogStore::get() != nullptr) {
+                    WatchdogStore::get().reset();
+                }
             }
         };
 
@@ -212,8 +223,9 @@ namespace dsl {
                 // Send our configuration out
                 reaction->reactor.emit<emit::Direct>(std::make_unique<operation::ChronoTask>(
                     [reaction, data](NUClear::clock::time_point& time) {
-                        return Watchdog::chrono_task(
-                            reaction, WatchdogDataStore<WatchdogGroup, RuntimeType>::get(data), time);
+                        return Watchdog::chrono_task(reaction,
+                                                     WatchdogDataStore<WatchdogGroup, RuntimeType>::get(data),
+                                                     time);
                     },
                     NUClear::clock::now() + period(ticks),
                     reaction->id));
@@ -260,16 +272,11 @@ namespace dsl {
 
                 // Check if our watchdog has timed out
                 if (NUClear::clock::now() > (service_time + period(ticks))) {
-                    try {
-                        // Submit the reaction to the thread pool
-                        auto task = reaction->get_task();
-                        if (task) { reaction->reactor.powerplant.submit(std::move(task)); }
-                    }
-                    catch (...) {
-                    }
+                    // Submit the reaction to the thread pool
+                    reaction->reactor.powerplant.submit(reaction->get_task());
 
                     // Now automatically service the watchdog
-                    time = NUClear::clock::now() + period(ticks);
+                    time += period(ticks);
                 }
                 // Change our wait time to our new watchdog time
                 else {

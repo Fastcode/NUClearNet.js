@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -40,8 +44,8 @@ class PowerPlant;
  */
 class Environment {
 public:
-    Environment(PowerPlant& powerplant, std::string&& reactor_name, LogLevel log_level)
-        : powerplant(powerplant), log_level(log_level), reactor_name(reactor_name) {}
+    Environment(PowerPlant& powerplant, std::string reactor_name)
+        : powerplant(powerplant), reactor_name(std::move(reactor_name)) {}
 
 private:
     friend class PowerPlant;
@@ -49,8 +53,6 @@ private:
 
     /// @brief The PowerPlant to use in this reactor
     PowerPlant& powerplant;
-    /// @brief The log level for this reactor
-    LogLevel log_level;
     /// @brief The name of the reactor
     std::string reactor_name;
 };

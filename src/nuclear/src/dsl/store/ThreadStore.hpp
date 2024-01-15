@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -42,10 +46,11 @@ namespace dsl {
          */
         template <typename DataType, int Index = 0>
         struct ThreadStore {
-            static ATTRIBUTE_TLS DataType* value;
+            static ATTRIBUTE_TLS DataType* value;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
         };
 
         template <typename DataType, int index>
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
         ATTRIBUTE_TLS DataType* ThreadStore<DataType, index>::value = nullptr;
 
     }  // namespace store

@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -18,96 +22,73 @@
 
 #include "PowerPlant.hpp"
 
-#include "threading/ThreadPoolTask.hpp"
-
 namespace NUClear {
 
-PowerPlant* PowerPlant::powerplant = nullptr;  // NOLINT
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+PowerPlant* PowerPlant::powerplant = nullptr;
 
 PowerPlant::~PowerPlant() {
+    // Make sure reactors are destroyed before anything else
+    while (!reactors.empty()) {
+        reactors.pop_back();
+    }
 
     // Bye bye powerplant
     powerplant = nullptr;
 }
 
-void PowerPlant::on_startup(std::function<void()>&& func) {
-    if (is_running) { throw std::runtime_error("Unable to do on_startup as the PowerPlant has already started"); }
-    else {
-        startup_tasks.push_back(func);
-    }
-}
-
-void PowerPlant::add_thread_task(std::function<void()>&& task) {
-    tasks.push_back(task);
-}
-
 void PowerPlant::start() {
 
     // We are now running
-    is_running = true;
+    is_running.store(true);
 
-    // Run all our Initialise scope tasks
-    for (auto&& func : startup_tasks) {
-        func();
-    }
-    startup_tasks.clear();
-
-    // Direct emit startup event
+    // Direct emit startup event and command line arguments
     emit<dsl::word::emit::Direct>(std::make_unique<dsl::word::Startup>());
+    emit_shared<dsl::word::emit::Direct>(dsl::store::DataStore<message::CommandLineArguments>::get());
 
-    // Start all our threads
-    for (size_t i = 0; i < configuration.thread_count; ++i) {
-        tasks.push_back(threading::make_thread_pool_task(scheduler));
-    }
+    // Start all of the threads
+    scheduler.start();
+}
 
-    // Start all our tasks
-    for (auto& task : tasks) {
-        threads.push_back(std::make_unique<std::thread>(task));
-    }
+void PowerPlant::submit(const NUClear::id_t& id,
+                        const int& priority,
+                        const util::GroupDescriptor& group,
+                        const util::ThreadPoolDescriptor& pool,
+                        const bool& immediate,
+                        std::function<void()>&& task) {
+    scheduler.submit(id, priority, group, pool, immediate, std::move(task));
+}
 
-    // Start our main thread using our main task scheduler
-    threading::make_thread_pool_task(main_thread_scheduler)();
-
-    // Now wait for all the threads to finish executing
-    for (auto& thread : threads) {
+void PowerPlant::submit(std::unique_ptr<threading::ReactionTask>&& task, const bool& immediate) noexcept {
+    // Only submit non null tasks
+    if (task) {
         try {
-            if (thread->joinable()) { thread->join(); }
+            const std::shared_ptr<threading::ReactionTask> t(std::move(task));
+            submit(t->id, t->priority, t->group_descriptor, t->thread_pool_descriptor, immediate, [t]() { t->run(); });
         }
-        // This gets thrown some time if between checking if joinable and joining
-        // the thread is no longer joinable
-        catch (const std::system_error&) {
+        catch (const std::exception& ex) {
+            task->parent.reactor.log<NUClear::ERROR>("There was an exception while submitting a reaction", ex.what());
+        }
+        catch (...) {
+            task->parent.reactor.log<NUClear::ERROR>("There was an unknown exception while submitting a reaction");
         }
     }
-}
-
-void PowerPlant::submit(std::unique_ptr<threading::ReactionTask>&& task) {
-    scheduler.submit(std::move(task));
-}
-
-void PowerPlant::submit_main(std::unique_ptr<threading::ReactionTask>&& task) {
-    main_thread_scheduler.submit(std::move(task));
 }
 
 void PowerPlant::shutdown() {
 
-    // Stop running before we emit events the Shutdown event
+    // Stop running before we emit the Shutdown event
     // Some things such as on<Always> depend on this flag and it's possible to miss it
-    is_running = false;
+    is_running.store(false);
 
     // Emit our shutdown event
     emit(std::make_unique<dsl::word::Shutdown>());
 
     // Shutdown the scheduler
     scheduler.shutdown();
-
-    // Shutdown the main threads scheduler
-    main_thread_scheduler.shutdown();
-
-    // Bye bye powerplant
-    powerplant = nullptr;
 }
 
 bool PowerPlant::running() const {
-    return is_running;
+    return is_running.load();
 }
 }  // namespace NUClear

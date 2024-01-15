@@ -18,9 +18,9 @@
 #ifndef NETWORKBINDING_H
 #define NETWORKBINDING_H
 
-#include "nuclear/src/extension/network/NUClearNetwork.hpp"
-#include "napi-thread-safe-callback.hpp"
 #include <napi.h>
+
+#include "nuclear/src/extension/network/NUClearNetwork.hpp"
 
 namespace NUClear {
 
@@ -30,7 +30,10 @@ public:
 
     Napi::Value Hash(const Napi::CallbackInfo& info);
     void Send(const Napi::CallbackInfo& info);
-    void On(const Napi::CallbackInfo& info);
+    void OnPacket(const Napi::CallbackInfo& info);
+    void OnJoin(const Napi::CallbackInfo& info);
+    void OnLeave(const Napi::CallbackInfo& info);
+    void OnWait(const Napi::CallbackInfo& info);
     void Reset(const Napi::CallbackInfo& info);
     void Process(const Napi::CallbackInfo& info);
     void Shutdown(const Napi::CallbackInfo& info);
@@ -38,6 +41,10 @@ public:
 
     extension::network::NUClearNetwork net;
     bool destroyed = false;
+    Napi::ThreadSafeFunction on_packet;
+    Napi::ThreadSafeFunction on_join;
+    Napi::ThreadSafeFunction on_leave;
+    Napi::ThreadSafeFunction on_wait;
 
 #ifdef _WIN32
     WSAEVENT listenerNotifier;

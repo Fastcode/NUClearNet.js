@@ -8,20 +8,24 @@ jobs:
   publish_to_npm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout Code
+        uses: actions/checkout@v3
         with:
           ref: main
+
       # Installs Node and sets up up the .npmrc file to publish to npm
-      - uses: actions/setup-node@v2
+      - uses: actions/setup-node@v4
         with:
-          node-version: '16.x'
-          registry-url: 'https://registry.npmjs.org'
-      - run: npm ci
-      # Run the tests up to 5 times if it fails (to avoid the error "Network error when sending
-      # the announce packet: Bad file descriptor" that occurs sometimes on startup)
-      # TODO: investigate and fix the actual issue.
-      - shell: bash
-        run: ./tests/run-with-retries.sh
-      - run: node .github/auto-publish-action.js
+          node-version: "16.x"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: "Install Dependencies"
+        run: npm ci
+
+      - name: "Test Code"
+        run: npm test
+
+      - name: "Publish to npm"
+        run: node .github/auto-publish-action.js
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

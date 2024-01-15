@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2016 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -34,7 +38,7 @@ namespace dsl {
              * @details
              *  @code emit<Scope::DELAY>(data, delay(ticks), dataType); @endcode
              *  Emissions under this scope will wait for the provided time delay, and then emit the object utilising a
-             *  local emit (that is, normal threadpool distribution).
+             *  local emit (that is, normal thread pool distribution).
              *
              * @param data
              *  the data to emit
@@ -56,7 +60,7 @@ namespace dsl {
 
                     // Our chrono task is just to do a normal emit in the amount of time
                     auto msg = std::make_shared<operation::ChronoTask>(
-                        [&powerplant, data](NUClear::clock::time_point&) {
+                        [&powerplant, data](const NUClear::clock::time_point&) {
                             // Do the emit
                             emit::Local<DataType>::emit(powerplant, data);
 
@@ -76,7 +80,7 @@ namespace dsl {
 
                     // Our chrono task is just to do a normal emit in the amount of time
                     auto msg = std::make_shared<operation::ChronoTask>(
-                        [&powerplant, data](NUClear::clock::time_point&) {
+                        [&powerplant, data](const NUClear::clock::time_point&) {
                             // Do the emit
                             emit::Local<DataType>::emit(powerplant, data);
 

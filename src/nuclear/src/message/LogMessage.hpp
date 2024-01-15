@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2014 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,6 +23,8 @@
 #ifndef NUCLEAR_MESSAGE_LOGMESSAGE_HPP
 #define NUCLEAR_MESSAGE_LOGMESSAGE_HPP
 
+#include <memory>
+
 #include "../LogLevel.hpp"
 #include "ReactionStatistics.hpp"
 
@@ -30,18 +36,31 @@ namespace message {
      */
     struct LogMessage {
 
+        /**
+         * @brief Construct a new Log Message object
+         *
+         * @param level          the logging level of the log
+         * @param display_level  the logging level of the reactor that made this log
+         * @param message        the string contents of the message
+         * @param task           the currently executing task that made this message or nullptr if not in a task
+         */
+        LogMessage(const LogLevel& level,
+                   const LogLevel& display_level,
+                   std::string message,
+                   std::shared_ptr<ReactionStatistics> task)
+            : level(level), display_level(display_level), message(std::move(message)), task(std::move(task)) {}
 
         /// @brief The logging level of the log.
-        LogLevel level;
+        LogLevel level{};
+
+        /// @brief The logging level of the reactor that made the log (the level to display at).
+        LogLevel display_level{};
 
         /// @brief The string contents of the message.
-        std::string message;
+        std::string message{};
 
         /// @brief The currently executing task that made this message
-        /// @warning This pointer is only valid for the duration of the reaction that triggers on this message.
-        ///          After this, it will point to junk memory. This also applies to keywords that reschedule this reaction
-        ///          For example, using the Sync keyword can make it so this pointer is invalid
-        const ReactionStatistics* task;
+        const std::shared_ptr<ReactionStatistics> task{nullptr};
     };
 
 }  // namespace message
