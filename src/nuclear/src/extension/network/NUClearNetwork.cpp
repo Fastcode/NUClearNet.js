@@ -512,9 +512,7 @@ namespace extension {
                         ++it;
                     }
                     // Remove them from the list
-                    else {
-                        it = qit->second.targets.erase(it);
-                    }
+                    else { it = qit->second.targets.erase(it); }
                 }
 
                 if (qit->second.targets.empty()) {
@@ -610,9 +608,7 @@ namespace extension {
                             }
                         }
                         // They're old but at least they're not timing out
-                        else {
-                            remote->last_update = std::chrono::steady_clock::now();
-                        }
+                        else { remote->last_update = std::chrono::steady_clock::now(); }
                     } break;
                     case LEAVE: {
 
