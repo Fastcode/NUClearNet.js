@@ -18,9 +18,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
-        node-version: [12.x, 14.x, 16.x]
+        node-version: [18.x, 20.x]
 
     steps:
+    # Install node-gyp
+    - name: Install node-gyp
+      run: npm install -g node-gyp
     - uses: actions/checkout@v2
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v2

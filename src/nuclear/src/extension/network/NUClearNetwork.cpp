@@ -22,6 +22,7 @@
 #include <cerrno>
 #include <cstring>
 #include <set>
+#include <system_error>
 #include <utility>
 
 #include "../../util/network/get_interfaces.hpp"
@@ -171,9 +172,7 @@ namespace extension {
 
             // Swap our address so the rest of the information is anys
             if (address.sock.sa_family == AF_INET) { address.ipv4.sin_addr.s_addr = htonl(INADDR_ANY); }
-            else if (address.sock.sa_family == AF_INET6) {
-                address.ipv6.sin6_addr = IN6ADDR_ANY_INIT;
-            }
+            else if (address.sock.sa_family == AF_INET6) { address.ipv6.sin6_addr = IN6ADDR_ANY_INIT; }
 
             // Make our socket
             announce_fd = ::socket(address.sock.sa_family, SOCK_DGRAM, IPPROTO_UDP);
@@ -232,9 +231,7 @@ namespace extension {
                                                       sizeof(ip_mreq));
 
                             if (status < 0) { last_network_errno = network_errno; }
-                            else {
-                                connected_count++;
-                            }
+                            else { connected_count++; }
                         }
                     }
 
@@ -552,15 +549,11 @@ namespace extension {
                         ++it;
                     }
                     // Remove them from the list
-                    else {
-                        it = qit->second.targets.erase(it);
-                    }
+                    else { it = qit->second.targets.erase(it); }
                 }
 
                 if (qit->second.targets.empty()) { qit = send_queue.erase(qit); }
-                else {
-                    ++qit;
-                }
+                else { ++qit; }
             }
         }
 
@@ -647,9 +640,7 @@ namespace extension {
                             }
                         }
                         // They're old but at least they're not timing out
-                        else {
-                            remote->last_update = std::chrono::steady_clock::now();
-                        }
+                        else { remote->last_update = std::chrono::steady_clock::now(); }
                     } break;
                     case LEAVE: {
 
