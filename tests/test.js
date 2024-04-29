@@ -187,20 +187,14 @@ test('NUClearNet emits leave events', async () => {
   //   - Automatically end with failure if the above didn't happen before the timeout
   await asyncTest(
     (done) => {
-      console.log('NUClearNet emits leave events')
       const [peerA, peerB] = createPeers(2);
-      console.log('NUClearNet emits leave events', peerA, peerB)
       function cleanUp() {
-        console.log('Executing cleanUp');
         [peerA, peerB].forEach((peer) => {
-          console.log(`Destroying network for ${peer.name}`);
           peer.net.destroy();
         });
       }
 
-      console.log('Before peerA.net.on(nuclear_leave)');
       peerA.net.on('nuclear_leave', (peer) => {
-        console.log('nuclear_leave event triggered', peer);
         // End the test when B disconnects from A
         if (peer.name === peerB.net.options.name) {
           cleanUp();
@@ -208,9 +202,7 @@ test('NUClearNet emits leave events', async () => {
         }
       });
 
-      console.log('Before peerA.net.on(nuclear_join)');
       peerA.net.on('nuclear_join', (peer) => {
-        console.log('nuclear_join event triggered', peer);
         // Disconnect B after it joins, to trigger the leave event on A
         if (peer.name === peerB.net.options.name) {
           peerB.net.disconnect();
@@ -218,9 +210,7 @@ test('NUClearNet emits leave events', async () => {
       });
 
       // Connect the peers
-      console.log('Connecting peers');
       [peerA, peerB].forEach((peer) => {
-        console.log(`Connecting peer ${peer.name}`);
         peer.net.connect({ name: peer.name });
       });
 
