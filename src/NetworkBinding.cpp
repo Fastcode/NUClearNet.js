@@ -150,17 +150,19 @@ void NetworkBinding::OnPacket(const Napi::CallbackInfo& info) {
                                          const uint64_t& hash,
                                          const bool& reliable,
                                          std::vector<uint8_t>&& payload) {
-        on_packet.BlockingCall([&t, hash, reliable, p = std::move(payload)](Napi::Env env, Napi::Function js_callback) {
-            auto addr = t.target.address();
-            js_callback.Call({
-                Napi::String::New(env, t.name),
-                Napi::String::New(env, addr.first),
-                Napi::Number::New(env, addr.second),
-                Napi::Boolean::New(env, reliable),
-                Napi::Buffer<uint8_t>::Copy(env, reinterpret_cast<const uint8_t*>(&hash), sizeof(uint64_t)),
-                Napi::Buffer<uint8_t>::Copy(env, p.data(), p.size()),
+        std::string name                     = t.name;
+        std::pair<std::string, int16_t> addr = t.target.address();
+        on_packet.BlockingCall(
+            [name, addr, hash, reliable, p = std::move(payload)](Napi::Env env, Napi::Function js_callback) {
+                js_callback.Call({
+                    Napi::String::New(env, name),
+                    Napi::String::New(env, addr.first),
+                    Napi::Number::New(env, addr.second),
+                    Napi::Boolean::New(env, reliable),
+                    Napi::Buffer<uint8_t>::Copy(env, reinterpret_cast<const uint8_t*>(&hash), sizeof(uint64_t)),
+                    Napi::Buffer<uint8_t>::Copy(env, p.data(), p.size()),
+                });
             });
-        });
     });
 }
 
@@ -171,8 +173,9 @@ void NetworkBinding::OnJoin(const Napi::CallbackInfo& info) {
     on_join = Napi::ThreadSafeFunction::New(env, info[0].As<Napi::Function>(), "OnJoin", 0, 1);
 
     this->net.set_join_callback([this](const NUClearNetwork::NetworkTarget& t) {
-        on_join.BlockingCall([&t](Napi::Env env, Napi::Function js_callback) {
-            auto addr = t.target.address();
+        std::string name                     = t.name;
+        std::pair<std::string, int16_t> addr = t.target.address();
+        on_join.BlockingCall([name, addr](Napi::Env env, Napi::Function js_callback) {
             js_callback.Call({
                 Napi::String::New(env, t.name),
                 Napi::String::New(env, addr.first),
@@ -189,10 +192,11 @@ void NetworkBinding::OnLeave(const Napi::CallbackInfo& info) {
     on_leave = Napi::ThreadSafeFunction::New(env, info[0].As<Napi::Function>(), "OnLeave", 0, 1);
 
     this->net.set_leave_callback([this](const NUClearNetwork::NetworkTarget& t) {
-        on_leave.BlockingCall([&t](Napi::Env env, Napi::Function js_callback) {
-            auto addr = t.target.address();
+        std::string name                     = t.name;
+        std::pair<std::string, int16_t> addr = t.target.address();
+        on_leave.BlockingCall([name, addr](Napi::Env env, Napi::Function js_callback) {
             js_callback.Call({
-                Napi::String::New(env, t.name),
+                Napi::String::New(env, name),
                 Napi::String::New(env, addr.first),
                 Napi::Number::New(env, addr.second),
             });
