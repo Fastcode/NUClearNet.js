@@ -188,10 +188,9 @@ test('NUClearNet emits leave events', async () => {
   await asyncTest(
     (done) => {
       const [peerA, peerB] = createPeers(2);
+
       function cleanUp() {
-        [peerA, peerB].forEach((peer) => {
-          peer.net.destroy();
-        });
+        [peerA, peerB].forEach((peer) => peer.net.destroy());
       }
 
       peerA.net.on('nuclear_leave', (peer) => {
@@ -210,13 +209,11 @@ test('NUClearNet emits leave events', async () => {
       });
 
       // Connect the peers
-      [peerA, peerB].forEach((peer) => {
-        peer.net.connect({ name: peer.name });
-      });
+      [peerA, peerB].forEach((peer) => peer.net.connect({ name: peer.name }));
 
       return cleanUp;
     },
-    { timeout: 2000 },
+    { timeout: 1000 },
   );
 });
 
