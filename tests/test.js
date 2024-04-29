@@ -200,7 +200,7 @@ test('NUClearNet emits leave events', async () => {
 
       console.log('Before peerA.net.on(nuclear_leave)');
       peerA.net.on('nuclear_leave', (peer) => {
-        console.log('nuclear_leave event triggered', peer.name);
+        console.log('nuclear_leave event triggered', peer);
         // End the test when B disconnects from A
         if (peer.name === peerB.net.options.name) {
           cleanUp();
@@ -210,7 +210,7 @@ test('NUClearNet emits leave events', async () => {
 
       console.log('Before peerA.net.on(nuclear_join)');
       peerA.net.on('nuclear_join', (peer) => {
-        console.log('nuclear_join event triggered', peer.name);
+        console.log('nuclear_join event triggered', peer);
         // Disconnect B after it joins, to trigger the leave event on A
         if (peer.name === peerB.net.options.name) {
           peerB.net.disconnect();
