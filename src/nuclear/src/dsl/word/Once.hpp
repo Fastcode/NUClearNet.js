@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2021 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,6 +23,7 @@
 #ifndef NUCLEAR_DSL_WORD_ONCE_HPP
 #define NUCLEAR_DSL_WORD_ONCE_HPP
 
+#include "../../threading/ReactionTask.hpp"
 #include "Single.hpp"
 
 namespace NUClear {

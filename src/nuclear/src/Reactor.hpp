@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -22,6 +26,7 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <typeindex>
@@ -32,6 +37,7 @@
 #include "dsl/Parse.hpp"
 #include "threading/Reaction.hpp"
 #include "threading/ReactionHandle.hpp"
+#include "threading/ReactionIdentifiers.hpp"
 #include "util/CallbackGenerator.hpp"
 #include "util/Sequence.hpp"
 #include "util/tuplify.hpp"
@@ -94,6 +100,12 @@ namespace dsl {
         template <typename>
         struct Sync;
 
+        template <typename>
+        struct Pool;
+
+        template <typename, int>
+        struct Group;
+
         namespace emit {
             template <typename T>
             struct Local;
@@ -130,11 +142,12 @@ class Reactor {
 public:
     friend class PowerPlant;
 
-    Reactor(std::unique_ptr<Environment> environment)
-        : reaction_handles()
-        , powerplant(environment->powerplant)
-        , reactor_name(environment->reactor_name)
-        , log_level(environment->log_level) {}
+    explicit Reactor(std::unique_ptr<Environment> environment)
+        : powerplant(environment->powerplant), reactor_name(environment->reactor_name) {}
+    Reactor(const Reactor& /*other*/)              = default;
+    Reactor(Reactor&& /*other*/) noexcept          = default;
+    Reactor& operator=(const Reactor& /*rhs*/)     = delete;
+    Reactor& operator=(Reactor&& /*rhs*/) noexcept = delete;
 
     virtual ~Reactor() {
 
@@ -145,18 +158,18 @@ public:
     }
 
 private:
-    std::vector<threading::ReactionHandle> reaction_handles;
+    std::vector<threading::ReactionHandle> reaction_handles{};
 
 public:
-    /// @brief TODO
+    /// @brief The powerplant that this reactor is running in
     PowerPlant& powerplant;
 
     /// @brief The demangled string name of this reactor
-    const std::string reactor_name;
+    const std::string reactor_name{};
 
 protected:
     /// @brief The level that this reactor logs at
-    LogLevel log_level;
+    LogLevel log_level{LogLevel::INFO};
 
     /***************************************************************************************************************
      * The types here are imported from other contexts so that when extending from the Reactor type in normal      *
@@ -287,18 +300,23 @@ public:
         std::tuple<Arguments...> args;
 
         template <typename Function, int... Index>
-        auto then(const std::string& label, Function&& callback, const util::Sequence<Index...>&) {
+        auto then(const std::string& label, Function&& callback, const util::Sequence<Index...>& /*s*/) {
 
-            // Generate the identifer
-            std::vector<std::string> identifier = {label,
-                                                   reactor.reactor_name,
-                                                   util::demangle(typeid(DSL).name()),
-                                                   util::demangle(typeid(Function).name())};
+            // Regex replace NUClear::dsl::Parse with NUClear::Reactor::on so that it reads more like what is expected
+            const std::string dsl = std::regex_replace(util::demangle(typeid(DSL).name()),
+                                                       std::regex("NUClear::dsl::Parse<"),
+                                                       "NUClear::Reactor::on<");
+
+            // Generate the identifier
+            threading::ReactionIdentifiers identifiers{label,
+                                                       reactor.reactor_name,
+                                                       dsl,
+                                                       util::demangle(typeid(Function).name())};
 
             // Generate the reaction
             auto reaction = std::make_shared<threading::Reaction>(
                 reactor,
-                std::move(identifier),
+                std::move(identifiers),
                 util::CallbackGenerator<DSL, Function>(std::forward<Function>(callback)));
 
             // Get our tuple from binding our reaction
@@ -369,11 +387,11 @@ public:
      */
     template <template <typename> class... Handlers, typename T, typename... Arguments>
     void emit(std::unique_ptr<T>&& data, Arguments&&... args) {
-        powerplant.emit<Handlers...>(std::forward<std::unique_ptr<T>>(data), std::forward<Arguments>(args)...);
+        powerplant.emit<Handlers...>(std::move(data), std::forward<Arguments>(args)...);
     }
     template <template <typename> class... Handlers, typename T, typename... Arguments>
     void emit(std::unique_ptr<T>& data, Arguments&&... args) {
-        powerplant.emit<Handlers...>(std::forward<std::unique_ptr<T>>(data), std::forward<Arguments>(args)...);
+        powerplant.emit<Handlers...>(std::move(data), std::forward<Arguments>(args)...);
     }
     template <template <typename> class... Handlers, typename... Arguments>
     void emit(Arguments&&... args) {
@@ -393,10 +411,10 @@ public:
      * @param args The arguments we are logging
      */
     template <enum LogLevel level = DEBUG, typename... Arguments>
-    void log(Arguments&&... args) {
+    void log(Arguments&&... args) const {
 
         // If the log is above or equal to our log level
-        if (level >= log_level) { powerplant.log<level>(std::forward<Arguments>(args)...); }
+        PowerPlant::log<level>(std::forward<Arguments>(args)...);
     }
 };
 
@@ -406,12 +424,14 @@ public:
 #include "dsl/word/Always.hpp"
 #include "dsl/word/Buffer.hpp"
 #include "dsl/word/Every.hpp"
+#include "dsl/word/Group.hpp"
 #include "dsl/word/IO.hpp"
 #include "dsl/word/Last.hpp"
 #include "dsl/word/MainThread.hpp"
 #include "dsl/word/Network.hpp"
 #include "dsl/word/Once.hpp"
 #include "dsl/word/Optional.hpp"
+#include "dsl/word/Pool.hpp"
 #include "dsl/word/Priority.hpp"
 #include "dsl/word/Shutdown.hpp"
 #include "dsl/word/Single.hpp"

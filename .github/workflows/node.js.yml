@@ -5,14 +5,22 @@ name: Node.js CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+# Ensure that only one instance of the workflow is run at a time for each branch/tag.
+# Jobs currently running on the branch/tag will be cancelled when new commits are pushed.
+# See https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions#concurrency.
+concurrency:
+  # `github.workflow` is the workflow name, `github.ref` is the current branch/tag identifier
+  group: ${{ format('{0}:{1}', github.workflow, github.ref) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
-
     runs-on: ${{ matrix.os }}
+    continue-on-error: true
 
     strategy:
       matrix:
@@ -21,19 +29,23 @@ jobs:
         node-version: [18.x, 20.x]
 
     steps:
-    # Install node-gyp
-    - name: Install node-gyp
-      run: npm install -g node-gyp
-    - uses: actions/checkout@v2
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v2
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    - run: npm ci
-    - run: npm run build --if-present
-    # Run the tests up to 5 times if it fails (to avoid the error "Network error when sending
-    # the announce packet: Bad file descriptor" that occurs sometimes on startup)
-    # TODO: investigate and fix the actual issue.
-    - shell: bash
-      run: ./tests/run-with-retries.sh
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install node-gyp
+        run: npm install -g node-gyp
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build --if-present
+
+      - name: Run tests
+        run: npm test

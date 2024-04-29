@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2018 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -28,11 +32,11 @@ namespace util {
     /**
      * @brief Applies a single set of function fusion with expanded arguments
      * @details Calls the function held in the template type Function.
-     *          for the arguments it uses the paramter packs Shared and Selected
+     *          for the arguments it uses the parameter packs Shared and Selected
      *          to expand the passed tuple args and forward those selected
      *          arguments to the function. This function is normally called by
      *          the other overload of apply_function_fusion_call to get the expanded
-     *          paramter packs.
+     *          parameter packs.
      *
      * @param  args     the arguments that were passed to the superfunction
      *
@@ -45,8 +49,8 @@ namespace util {
      */
     template <typename Function, int... Shared, int... Selected, typename... Arguments>
     auto apply_function_fusion_call(std::tuple<Arguments...>&& args,
-                                    const Sequence<Shared...>&,
-                                    const Sequence<Selected...>&)
+                                    const Sequence<Shared...>& /*shared*/,
+                                    const Sequence<Selected...>& /*selected*/)
         -> decltype(Function::call(std::get<Shared>(args)..., std::get<Selected>(args)...)) {
         return Function::call(std::get<Shared>(args)..., std::get<Selected>(args)...);
     }
@@ -54,14 +58,14 @@ namespace util {
     /**
      * @brief Applies a single set of function fusion with argument ranges
      * @details Calls the function held in the template type Function.
-     *          for the arguments it uses the paramter packs Shared and Selected
+     *          for the arguments it uses the parameter packs Shared and Selected
      *          to expand the passed tuple args and forward those selected
      *          arguments to the function.
      *
      * @param  args     the arguments that were passed to the superfunction
      *
      * @tparam Function     the struct that holds the call function wrapper to be called
-     * @tparam Shared       the number of paramters (from 0) to use in the call
+     * @tparam Shared       the number of parameters (from 0) to use in the call
      * @tparam Start        the index of the first argument to pass to the function
      * @tparam End          the index of the element after the last argument to pass to the function
      * @tparam Arguments    the types of the arguments passed into the function
@@ -70,10 +74,10 @@ namespace util {
      */
     template <typename Function, int Shared, int Start, int End, typename... Arguments>
     auto apply_function_fusion_call(std::tuple<Arguments...>&& args)
-        -> decltype(apply_function_fusion_call<Function>(std::forward<std::tuple<Arguments...>>(args),
+        -> decltype(apply_function_fusion_call<Function>(std::move(args),
                                                          GenerateSequence<0, Shared>(),
                                                          GenerateSequence<Start, End>())) {
-        return apply_function_fusion_call<Function>(std::forward<std::tuple<Arguments...>>(args),
+        return apply_function_fusion_call<Function>(std::move(args),
                                                     GenerateSequence<0, Shared>(),
                                                     GenerateSequence<Start, End>());
     }
@@ -82,19 +86,43 @@ namespace util {
     struct FunctionFusionCaller;
 
     /**
-     * @brief Used to call the result of the function fusion with the given arguments
-     * @details Provides a call function that will split the given arguments amoungst the functions
-     *          according to the provided ranges.
+     * @brief Termination case for calling a function fusion.
      *
-     * @tparam Functions The functions that we are going to call
-     * @tparam Shared    the number of arguments (from 0) to use in all of the calls
-     * @tparam Ranges    a set of pairs of integers that describe the first and last
-     *                   argument provided to each respective function
+     * @details terminates by just returning an empty tuple
+     *
+     * @tparam Shared the number of arguments (from 0) to use in all of the calls
      * @tparam Arguments the type of the provided arguments
      */
-    template <typename... Functions, int Shared, typename... Ranges, typename... Arguments>
-    struct FunctionFusionCaller<std::tuple<Functions...>, Shared, std::tuple<Ranges...>, std::tuple<Arguments...>>
-        : public std::true_type {
+    template <int Shared, typename... Arguments>
+    struct FunctionFusionCaller<std::tuple<>, Shared, std::tuple<>, std::tuple<Arguments...>> {
+        static inline std::tuple<> call(Arguments&&... /*args*/) {
+            return {};
+        }
+    };
+
+    /**
+     * @brief Used to call the result of the function fusion with the given arguments
+     * @details Provides a call function that will split the given arguments amongst the functions
+     *          according to the provided ranges.
+     *
+     * @tparam CurrentFunction  the current function we are calling in this class
+     * @tparam Functions        the remaining functions we are going to call
+     * @tparam Shared           the number of arguments (from 0) to use in all of the calls
+     * @tparam CurrentRange     the range of arguments to use in the current call
+     * @tparam Ranges           a set of pairs of integers that describe the first and last
+     *                          argument provided to each respective function
+     * @tparam Arguments        the type of the provided arguments
+     */
+    template <typename CurrentFunction,
+              typename... Functions,
+              int Shared,
+              typename CurrentRange,
+              typename... Ranges,
+              typename... Arguments>
+    struct FunctionFusionCaller<std::tuple<CurrentFunction, Functions...>,
+                                Shared,
+                                std::tuple<CurrentRange, Ranges...>,
+                                std::tuple<Arguments...>> : public std::true_type {
     private:
         /**
          * @brief Calls a single function in the function set.
@@ -109,23 +137,27 @@ namespace util {
          * @return the result of calling this specific function
          */
         template <typename Function, int Start, int End>
-        static inline auto call_one(const Sequence<Start, End>&, Arguments&&... args)
+        static inline auto call_one(const Sequence<Start, End>& /*e*/, Arguments&&... args)
             -> decltype(apply_function_fusion_call<Function, Shared, Start, End>(std::forward_as_tuple(args...))) {
 
             return apply_function_fusion_call<Function, Shared, Start, End>(std::forward_as_tuple(args...));
         }
 
         /**
-         * @brief This function exists unimplemented to absorb incorrect template instansiations.
+         * @brief This function exists unimplemented to absorb incorrect template instantiations.
          *
          * @param  swallows arguments
          *
-         * @tparam typename swallows the template paramter
+         * @tparam typename swallows the template parameter
          *
          * @return ignore
          */
         template <typename>
         static inline bool call_one(...);
+
+        /// The FunctionFusionCaller next step in the recursion
+        using NextStep =
+            FunctionFusionCaller<std::tuple<Functions...>, Shared, std::tuple<Ranges...>, std::tuple<Arguments...>>;
 
     public:
         /**
@@ -135,11 +167,16 @@ namespace util {
          *
          * @return A tuple of the returned values, or if the return value was a tuple fuse it
          */
-        static inline auto call(Arguments&&... args)
-            -> decltype(std::tuple_cat(tuplify(call_one<Functions>(Ranges(), std::forward<Arguments>(args)...))...)) {
+        template <typename... Args>
+        static inline auto call(Args&&... args)
+            -> decltype(std::tuple_cat(tuplify(call_one<CurrentFunction>(CurrentRange(), std::forward<Args>(args)...)),
+                                       NextStep::call(std::forward<Args>(args)...))) {
 
-            // Now to call all of the sets with their arguments
-            return std::tuple_cat(tuplify(call_one<Functions>(Ranges(), std::forward<Arguments>(args)...))...);
+            // Call each on a separate line to preserve order of execution
+            auto current   = tuplify(call_one<CurrentFunction>(CurrentRange(), std::forward<Args>(args)...));
+            auto remainder = NextStep::call(std::forward<Args>(args)...);
+
+            return std::tuple_cat(std::move(current), std::move(remainder));
         }
     };
 
@@ -147,7 +184,7 @@ namespace util {
      * @brief SFINAE test struct to see if a function is callable with the provided arguments.
      *
      * @tparam Function  the function to be tested
-     * @tparam Shared    the number of paramters (from 0) to use in the call
+     * @tparam Shared    the number of parameters (from 0) to use in the call
      * @tparam Start     the index of the first argument to pass to the function
      * @tparam End       the index of the element after the last argument to pass to the function
      * @tparam Arguments the types of the arguments passed into the function
@@ -155,8 +192,8 @@ namespace util {
     template <typename Function, int Shared, int Start, int End, typename Arguments>
     struct is_callable {
     private:
-        typedef std::true_type yes;
-        typedef std::false_type no;
+        using yes = std::true_type;
+        using no  = std::false_type;
 
         template <typename F>
         static auto test(int)
@@ -194,13 +231,13 @@ namespace util {
      *          This allows fusion of functions without knowing the name of the function
      *          that is being fused.
      *
-     * @tparam Functions            the functions we are going to call
+     * @tparam CurrentFunction      the current function we are inspecting
+     * @tparam Functions            the remaining functions we are going to call
      * @tparam Arguments            the arguments we are calling the function with
-     * @tparam FunctionWrapper      the template that is used to wrap the Function objects
-     *                              to be called
+     * @tparam FunctionWrapper      the template that is used to wrap the Function objects to be called
      * @tparam WrapperArgs          template types to be used on the FunctionWrapper in addition to the Fuctions type.
      *                              May be empty.
-     * @tparam Shared               the number of paramters (from 0) to use in all of the calls
+     * @tparam Shared               the number of parameters (from 0) to use in all of the calls
      * @tparam Start                the current attempted index of the first argument to pass to the function
      * @tparam End                  the current attempted index of the element after the last argument to pass to the
      *                              function

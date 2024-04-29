@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -25,8 +29,8 @@ namespace util {
     template <typename T>
     struct is_dereferenceable {
     private:
-        typedef std::true_type yes;
-        typedef std::false_type no;
+        using yes = std::true_type;
+        using no  = std::false_type;
 
         template <typename U>
         static auto test(int) -> decltype(*std::declval<U>(), yes());
@@ -51,7 +55,7 @@ namespace util {
         T& value;
 
     public:
-        Dereferencer(T& value) : value(value) {}
+        explicit Dereferencer(T& value) : value(value) {}
 
         // We can return the type as normal
         operator T&() {

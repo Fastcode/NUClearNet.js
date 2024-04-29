@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -20,6 +24,7 @@
 #define NUCLEAR_DSL_WORD_EMIT_NETWORK_HPP
 
 #include <array>
+
 #include "../../../util/serialise/Serialise.hpp"
 
 namespace NUClear {
@@ -27,16 +32,16 @@ namespace dsl {
     namespace word {
         namespace emit {
             struct NetworkEmit {
-                NetworkEmit() : target(""), hash(), payload(), reliable(false) {}
+                NetworkEmit() = default;
 
                 /// The target to send this serialised packet to
-                std::string target;
+                std::string target{};
                 /// The hash identifying the type of object
-                uint64_t hash;
+                uint64_t hash{0};
                 /// The serialised data
-                std::vector<char> payload;
+                std::vector<uint8_t> payload{};
                 /// If the message should be sent reliably
-                bool reliable;
+                bool reliable{false};
             };
 
             /**
@@ -78,7 +83,7 @@ namespace dsl {
 
                     auto e = std::make_unique<NetworkEmit>();
 
-                    e->target   = target;
+                    e->target   = std::move(target);
                     e->hash     = util::serialise::Serialise<DataType>::hash();
                     e->payload  = util::serialise::Serialise<DataType>::serialise(*data);
                     e->reliable = reliable;

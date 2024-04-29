@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,6 +23,7 @@
 #ifndef NUCLEAR_POWERPLANT_HPP
 #define NUCLEAR_POWERPLANT_HPP
 
+#include <atomic>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -32,11 +37,15 @@
 #include <vector>
 
 // Utilities
+#include "Configuration.hpp"
 #include "LogLevel.hpp"
+#include "id.hpp"
 #include "message/LogMessage.hpp"
+#include "threading/ReactionTask.hpp"
 #include "threading/TaskScheduler.hpp"
 #include "util/FunctionFusion.hpp"
 #include "util/demangle.hpp"
+#include "util/main_thread_id.hpp"
 #include "util/unpack.hpp"
 
 namespace NUClear {
@@ -57,48 +66,28 @@ class PowerPlant {
     friend class Reactor;
 
 public:
-    /**
-     * @brief This class holds the configuration for a PowerPlant.
-     *
-     * @details
-     *  It configures the number of threads that will be in the PowerPlants thread pool
-     */
-    struct Configuration {
-        /// @brief default to the amount of hardware concurrency (or 2) threads
-        Configuration()
-            : thread_count(std::thread::hardware_concurrency() == 0 ? 2 : std::thread::hardware_concurrency()) {}
-
-        /// @brief The number of threads the system will use
-        size_t thread_count;
-    };
-
-    /// @brief Holds the configuration information for this PowerPlant (such as number of pool threads)
-    const Configuration configuration;
-
-
     // There can only be one powerplant, so this is it
-    static PowerPlant* powerplant;
+    static PowerPlant* powerplant;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
      * @brief
      *  Constructs a PowerPlant with the given configuration and provides access
      *  to argv for all reactors.
      *
-     * @details
-     *  If PowerPlant is constructed with argc and argv then a CommandLineArguments
-     *  message will be emitted and available to all reactors.
+     * @details Arguments passed to this function will be emitted as a CommandLineArguments message.
      *
      * @param config The PowerPlant's configuration
      * @param argc The number of command line arguments
      * @param argv The command line argument strings
      */
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
     PowerPlant(Configuration config = Configuration(), int argc = 0, const char* argv[] = nullptr);
     ~PowerPlant();
 
     // There can only be one!
-    PowerPlant(const PowerPlant& other)  = delete;
-    PowerPlant(const PowerPlant&& other) = delete;
-    PowerPlant& operator=(const PowerPlant& other) = delete;
+    PowerPlant(const PowerPlant& other)             = delete;
+    PowerPlant(const PowerPlant&& other)            = delete;
+    PowerPlant& operator=(const PowerPlant& other)  = delete;
     PowerPlant& operator=(const PowerPlant&& other) = delete;
 
     /**
@@ -124,22 +113,6 @@ public:
     bool running() const;
 
     /**
-     * @brief Adds a function to the set of startup tasks.
-     *
-     * @param func the task being added to the set of startup tasks.
-     *
-     * @throws std::runtime_error if the PowerPlant is already running/has already started.
-     */
-    void on_startup(std::function<void()>&& func);
-
-    /**
-     * @brief Adds a function to the set of tasks to be run when the PowerPlant starts up
-     *
-     * @param task The function to add to the task list
-     */
-    void add_thread_task(std::function<void()>&& task);
-
-    /**
      * @brief Installs a reactor of a particular type to the system.
      *
      * @details
@@ -148,24 +121,40 @@ public:
      *  in the environment of that reactor so that it can be used to filter logs.
      *
      * @tparam T        The type of the reactor to build and install
+     * @tparam Args     The types of the extra arguments to pass to the reactor constructor
      * @tparam level    The initial logging level for this reactor to use
+     *
+     * @param arg       Extra arguments to pass to the reactor constructor
+     *
+     * @return A reference to the installed reactor
      */
-    template <typename T, enum LogLevel level = DEBUG>
-    void install();
+    template <typename T, typename... Args>
+    T& install(Args&&... args);
+
+    /**
+     * @brief Generic submit function for submitting tasks to the thread pool.
+     *
+     * @param id        an id for ordering the task
+     * @param priority  the priority of the task between 0 and 1000
+     * @param group     the details of the execution group this task will run in
+     * @param pool      the details of the thread pool this task will run from
+     * @param immediate if this task should run immediately in the current thread
+     * @param task      the wrapped function to be executed
+     */
+    void submit(const NUClear::id_t& id,
+                const int& priority,
+                const util::GroupDescriptor& group,
+                const util::ThreadPoolDescriptor& pool,
+                const bool& immediate,
+                std::function<void()>&& task);
 
     /**
      * @brief Submits a new task to the ThreadPool to be queued and then executed.
      *
      * @param task The Reaction task to be executed in the thread pool
+     * @param immediate if this task should run immediately in the current thread
      */
-    void submit(std::unique_ptr<threading::ReactionTask>&& task);
-
-    /**
-     * @brief Submits a new task to the main threads thread pool to be queued and then executed.
-     *
-     * @param task The Reaction task to be executed in the thread pool
-     */
-    void submit_main(std::unique_ptr<threading::ReactionTask>&& task);
+    void submit(std::unique_ptr<threading::ReactionTask>&& task, const bool& immediate = false) noexcept;
 
     /**
      * @brief Log a message through NUClear's system.
@@ -226,7 +215,7 @@ public:
               class... Remainder,
               typename T,
               typename... Arguments>
-    void emit_shared(std::shared_ptr<T>&& data, Arguments&&... args);
+    void emit_shared(std::shared_ptr<T> data, Arguments&&... args);
 
     template <template <typename> class First, template <typename> class... Remainder, typename... Arguments>
     void emit_shared(Arguments&&... args);
@@ -251,18 +240,12 @@ public:
 private:
     /// @brief A list of tasks that must be run when the powerplant starts up
     std::vector<std::function<void()>> tasks;
-    /// @brief A vector of the running threads in the system
-    std::vector<std::unique_ptr<std::thread>> threads;
     /// @brief Our TaskScheduler that handles distributing task to the pool threads
     threading::TaskScheduler scheduler;
-    /// @brief Our TaskScheduler that handles distributing tasks to the main thread
-    threading::TaskScheduler main_thread_scheduler;
     /// @brief Our vector of Reactors, will get destructed when this vector is
     std::vector<std::unique_ptr<NUClear::Reactor>> reactors;
-    /// @brief Tasks that will be run during the startup process
-    std::vector<std::function<void()>> startup_tasks;
     /// @brief True if the powerplant is running
-    volatile bool is_running = false;
+    std::atomic<bool> is_running{false};
 };
 
 /**

@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2013 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,37 +23,52 @@
 #include <catch.hpp>
 #include <nuclear>
 
+#include "test_util/TestBase.hpp"
+
 // Anonymous namespace to keep everything file local
 namespace {
 
-volatile bool did_shutdown = false;
+/// @brief Events that occur during the test
+std::vector<std::string> events;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
-struct SimpleMessage {};
-
-class TestReactor : public NUClear::Reactor {
+class TestReactor : public test_util::TestBase<TestReactor> {
 public:
-    TestReactor(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)) {
+    TestReactor(std::unique_ptr<NUClear::Environment> environment) : TestBase(std::move(environment), false) {
 
-        on<Trigger<SimpleMessage>>().then([this] {
-            // Shutdown so we can test shutting down
+        on<Shutdown>().then([] {  //
+            events.push_back("Shutdown task executed");
+        });
+
+        on<Trigger<Step<1>>, Priority::LOW>().then([this] {
+            events.push_back("Requesting shutdown");
             powerplant.shutdown();
         });
 
-        on<Shutdown>().then([] { did_shutdown = true; });
+        on<Startup>().then([this] {
+            events.push_back("Starting test");
+            emit(std::make_unique<Step<1>>());
+        });
     }
 };
 }  // namespace
 
 TEST_CASE("A test that a shutdown message is emitted when the system shuts down", "[api][shutdown]") {
 
-    NUClear::PowerPlant::Configuration config;
+    NUClear::Configuration config;
     config.thread_count = 1;
     NUClear::PowerPlant plant(config);
     plant.install<TestReactor>();
-
-    plant.emit(std::make_unique<SimpleMessage>());
-
     plant.start();
 
-    REQUIRE(did_shutdown);
+    const std::vector<std::string> expected = {
+        "Starting test",
+        "Requesting shutdown",
+        "Shutdown task executed",
+    };
+
+    // Make an info print the diff in an easy to read way if we fail
+    INFO(test_util::diff_string(expected, events));
+
+    // Check the events fired in order and only those events
+    REQUIRE(events == expected);
 }

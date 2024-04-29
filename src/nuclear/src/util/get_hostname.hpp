@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2017 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -20,9 +24,9 @@
 #define NUCLEAR_UTIL_GET_HOSTNAME_HPP
 
 #ifdef _WIN32
-#    include "platform.hpp"
+    #include "platform.hpp"
 #else
-#    include <sys/utsname.h>
+    #include <sys/utsname.h>
 #endif
 
 namespace NUClear {
@@ -37,9 +41,9 @@ namespace util {
         GetComputerName(n, &size);
         return std::string(n, size);
 #else
-        utsname u;
+        utsname u{};
         uname(&u);
-        return std::string(u.nodename);
+        return u.nodename;
 #endif
     }
 

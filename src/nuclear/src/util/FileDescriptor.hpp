@@ -1,6 +1,10 @@
 /*
- * Copyright (C) 2013      Trent Houliston <trent@houliston.me>, Jake Woods <jake.f.woods@gmail.com>
- *               2014-2017 Trent Houliston <trent@houliston.me>
+ * MIT License
+ *
+ * Copyright (c) 2015 NUClear Contributors
+ *
+ * This file is part of the NUClear codebase.
+ * See https://github.com/Fastcode/NUClear for further info.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
  * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -19,6 +23,8 @@
 #ifndef NUCLEAR_UTIL_FILEDESCRIPTOR_HPP
 #define NUCLEAR_UTIL_FILEDESCRIPTOR_HPP
 
+#include <functional>
+
 #include "platform.hpp"
 
 namespace NUClear {
@@ -26,24 +32,27 @@ namespace util {
 
     /**
      * @brief An RAII file descriptor.
+     *
      * @details This class represents an RAII file descriptor.
-     *          It will close the file descriptor it holds on
-     *          destruction.
+     *          It will close the file descriptor it holds on destruction.
      */
     class FileDescriptor {
+    public:
+        /**
+         * @brief Construct a File Descriptor with an invalid file descriptor.
+         */
+        FileDescriptor();
 
         /**
          * @brief Constructs a new RAII file descriptor.
          *
-         * @param fd [description]
+         * @param fd the file descriptor to hold
+         * @param cleanup an optional cleanup function to call on close
          */
-
-    public:
-        FileDescriptor();
-        FileDescriptor(const fd_t& fd);
+        FileDescriptor(const fd_t& fd_, std::function<void(fd_t)> cleanup_ = nullptr);
 
         // Don't allow copy construction or assignment
-        FileDescriptor(const FileDescriptor&) = delete;
+        FileDescriptor(const FileDescriptor&)            = delete;
         FileDescriptor& operator=(const FileDescriptor&) = delete;
 
         // Allow move construction or assignment
@@ -51,7 +60,7 @@ namespace util {
         FileDescriptor& operator=(FileDescriptor&& rhs) noexcept;
 
         /**
-         * @brief Destruct the file descriptor, closes the held FD
+         * @brief Destruct the file descriptor, closes the held fd
          */
         ~FileDescriptor();
 
@@ -73,31 +82,29 @@ namespace util {
         bool valid() const;
 
         /**
-         * @brief Releases the file descriptor from RAII.
-         * @details This releases and returns the file descriptor
-         *          it holds. This allows it to no longer be
-         *          subject to closure on deletion.
-         *          After this this FileDescriptor object will
-         *          be invalidated.
-         * @return the held file descriptor
+         * @brief Close the currently held file descriptor
+         */
+        void close();
+
+        /**
+         * @brief Release the currently held file descriptor
+         *
+         * @return the file descriptor
          */
         fd_t release();
 
         /**
-         * @brief Casts this to the held file descriptor
+         * @brief Implicitly convert this class to a file descriptor
          *
          * @return the file descriptor
          */
         operator fd_t();
 
-        /**
-         * @brief Close the current file descriptor, if it's valid
-         */
-        void close_fd();
-
     private:
         /// @brief The held file descriptor
         fd_t fd{INVALID_SOCKET};
+        /// @brief An optional cleanup function to call on close
+        std::function<void(fd_t)> cleanup;
     };
 
 }  // namespace util
