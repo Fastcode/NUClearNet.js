@@ -177,7 +177,7 @@ void NetworkBinding::OnJoin(const Napi::CallbackInfo& info) {
         std::pair<std::string, int16_t> addr = t.target.address();
         on_join.BlockingCall([name, addr](Napi::Env env, Napi::Function js_callback) {
             js_callback.Call({
-                Napi::String::New(env, t.name),
+                Napi::String::New(env, name),
                 Napi::String::New(env, addr.first),
                 Napi::Number::New(env, addr.second),
             });
