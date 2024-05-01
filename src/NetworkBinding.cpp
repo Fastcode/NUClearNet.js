@@ -150,8 +150,8 @@ void NetworkBinding::OnPacket(const Napi::CallbackInfo& info) {
                                          const uint64_t& hash,
                                          const bool& reliable,
                                          std::vector<uint8_t>&& payload) {
-        std::string name                     = t.name;
-        std::pair<std::string, int16_t> addr = t.target.address();
+        std::string name                       = t.name;
+        std::pair<std::string, in_port_t> addr = t.target.address();
         on_packet.BlockingCall(
             [name, addr, hash, reliable, p = std::move(payload)](Napi::Env env, Napi::Function js_callback) {
                 js_callback.Call({
@@ -173,8 +173,8 @@ void NetworkBinding::OnJoin(const Napi::CallbackInfo& info) {
     on_join = Napi::ThreadSafeFunction::New(env, info[0].As<Napi::Function>(), "OnJoin", 0, 1);
 
     this->net.set_join_callback([this](const NUClearNetwork::NetworkTarget& t) {
-        std::string name                     = t.name;
-        std::pair<std::string, int16_t> addr = t.target.address();
+        std::string name                       = t.name;
+        std::pair<std::string, in_port_t> addr = t.target.address();
         on_join.BlockingCall([name, addr](Napi::Env env, Napi::Function js_callback) {
             js_callback.Call({
                 Napi::String::New(env, name),
@@ -192,8 +192,8 @@ void NetworkBinding::OnLeave(const Napi::CallbackInfo& info) {
     on_leave = Napi::ThreadSafeFunction::New(env, info[0].As<Napi::Function>(), "OnLeave", 0, 1);
 
     this->net.set_leave_callback([this](const NUClearNetwork::NetworkTarget& t) {
-        std::string name                     = t.name;
-        std::pair<std::string, int16_t> addr = t.target.address();
+        std::string name                       = t.name;
+        std::pair<std::string, in_port_t> addr = t.target.address();
         on_leave.BlockingCall([name, addr](Napi::Env env, Napi::Function js_callback) {
             js_callback.Call({
                 Napi::String::New(env, name),
