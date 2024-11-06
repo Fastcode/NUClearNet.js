@@ -20,61 +20,33 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef NUCLEAR_DSL_FUSION_GETFUSION_HPP
-#define NUCLEAR_DSL_FUSION_GETFUSION_HPP
+#ifndef NUCLEAR_DSL_FUSION_GET_FUSION_HPP
+#define NUCLEAR_DSL_FUSION_GET_FUSION_HPP
 
-#include "../../threading/ReactionHandle.hpp"
+#include "../../threading/Reaction.hpp"
 #include "../../util/tuplify.hpp"
 #include "../operation/DSLProxy.hpp"
-#include "has_get.hpp"
+#include "FindWords.hpp"
+#include "has_nuclear_dsl_method.hpp"
 
 namespace NUClear {
 namespace dsl {
     namespace fusion {
 
+        /// Make a SFINAE type to check if a word has a get method
+        HAS_NUCLEAR_DSL_METHOD(get);
+
         /**
-         * @brief This is our Function Fusion wrapper class that allows it to call get functions
+         * This is our Function Fusion wrapper class that allows it to call get functions.
          *
          * @tparam Function the get function that we are wrapping for
          * @tparam DSL      the DSL that we pass to our get function
          */
         template <typename Function, typename DSL>
         struct GetCaller {
-            static inline auto call(threading::Reaction& reaction) -> decltype(Function::template get<DSL>(reaction)) {
-                return Function::template get<DSL>(reaction);
+            static auto call(threading::ReactionTask& task) -> decltype(Function::template get<DSL>(task)) {
+                return Function::template get<DSL>(task);
             }
-        };
-
-        template <typename, typename = std::tuple<>>
-        struct GetWords;
-
-        /**
-         * @brief Metafunction that extracts all of the Words with a get function
-         *
-         * @tparam Word1    the word we are looking at
-         * @tparam WordN    the words we have yet to look at
-         * @tparam GetWords the words we have found with get functions
-         */
-        template <typename Word1, typename... WordN, typename... FoundWords>
-        struct GetWords<std::tuple<Word1, WordN...>, std::tuple<FoundWords...>>
-            : public std::conditional_t<has_get<Word1>::value,
-                                        /*T*/ GetWords<std::tuple<WordN...>, std::tuple<FoundWords..., Word1>>,
-                                        /*F*/ GetWords<std::tuple<WordN...>, std::tuple<FoundWords...>>> {};
-
-        /**
-         * @brief Termination case for the GetWords metafunction
-         *
-         * @tparam GetWords The words we have found with get functions
-         */
-        template <typename... FoundWords>
-        struct GetWords<std::tuple<>, std::tuple<FoundWords...>> {
-            using type = std::tuple<FoundWords...>;
-        };
-
-        /// Type that redirects types without a get function to their proxy type
-        template <typename Word>
-        struct Get {
-            using type = std::conditional_t<has_get<Word>::value, Word, operation::DSLProxy<Word>>;
         };
 
         // Default case where there are no get words
@@ -86,29 +58,27 @@ namespace dsl {
         struct GetFuser<std::tuple<Word1, WordN...>> {
 
             template <typename DSL, typename U = Word1>
-            static inline auto get(threading::Reaction& reaction)
+            static auto get(threading::ReactionTask& task)
                 -> decltype(util::FunctionFusion<std::tuple<Word1, WordN...>,
-                                                 decltype(std::forward_as_tuple(reaction)),
+                                                 decltype(std::forward_as_tuple(task)),
                                                  GetCaller,
                                                  std::tuple<DSL>,
-                                                 1>::call(reaction)) {
+                                                 1>::call(task)) {
 
                 // Perform our function fusion
                 return util::FunctionFusion<std::tuple<Word1, WordN...>,
-                                            decltype(std::forward_as_tuple(reaction)),
+                                            decltype(std::forward_as_tuple(task)),
                                             GetCaller,
                                             std::tuple<DSL>,
-                                            1>::call(reaction);
+                                            1>::call(task);
             }
         };
 
         template <typename Word1, typename... WordN>
-        struct GetFusion
-            : public GetFuser<
-                  typename GetWords<std::tuple<typename Get<Word1>::type, typename Get<WordN>::type...>>::type> {};
+        struct GetFusion : GetFuser<FindWords<has_get, Word1, WordN...>> {};
 
     }  // namespace fusion
 }  // namespace dsl
 }  // namespace NUClear
 
-#endif  // NUCLEAR_DSL_FUSION_GETFUSION_HPP
+#endif  // NUCLEAR_DSL_FUSION_GET_FUSION_HPP

@@ -20,151 +20,168 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef NUCLEAR_THREADING_REACTIONTASK_HPP
-#define NUCLEAR_THREADING_REACTIONTASK_HPP
+#ifndef NUCLEAR_THREADING_REACTION_TASK_HPP
+#define NUCLEAR_THREADING_REACTION_TASK_HPP
 
-#include <atomic>
 #include <functional>
 #include <memory>
-#include <typeindex>
-#include <vector>
+#include <set>
 
+#include "../clock.hpp"
 #include "../id.hpp"
-#include "../message/ReactionStatistics.hpp"
 #include "../util/GroupDescriptor.hpp"
+#include "../util/Inline.hpp"
 #include "../util/ThreadPoolDescriptor.hpp"
 #include "../util/platform.hpp"
+#include "Reaction.hpp"
 
 namespace NUClear {
+
+namespace message {
+    struct ReactionStatistics;
+}  // namespace message
+
 namespace threading {
 
     /**
-     * @brief This is a databound call of a Reaction ready to be executed.
+     * This is a databound call of a Reaction ready to be executed.
      *
-     * @tparam ReactionType the type of the reaction
-     *
-     * @details
-     *  This class holds a reaction that is ready to be executed. It is a Reaction object which has had it's callback
-     *  parameters bound with data. This can then be executed as a function to run the call inside it.
+     * This class holds a reaction that is ready to be executed.
+     * It is a Reaction object which has had it's callback parameters bound with data.
+     * This can then be executed as a function to run the call inside it.
      */
-    template <typename ReactionType>
-    class Task {
+    class ReactionTask {
     private:
-        /// @brief a source for task ids, atomically creates longs
-        static std::atomic<NUClear::id_t> task_id_source;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
-        /// @brief the current task that is being executed by this thread (or nullptr if none is)
-        static ATTRIBUTE_TLS Task* current_task;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        /// The current task that is being executed by this thread (or nullptr if none is)
+        static ATTRIBUTE_TLS ReactionTask* current_task;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     public:
         /// Type of the functions that ReactionTasks execute
-        using TaskFunction = std::function<void(Task<ReactionType>&)>;
+        using TaskFunction = std::function<void(ReactionTask&)>;
 
         /**
-         * @brief Gets the current executing task, or nullptr if there isn't one.
+         * Gets the current executing task, or nullptr if there isn't one.
          *
-         * @return the current executing task or nullptr if there isn't one
+         * @return The current executing task or nullptr if there isn't one
          */
-        static const Task* get_current_task() {
-            return current_task;
-        }
+        static const ReactionTask* get_current_task();
 
         /**
-         * @brief Creates a new ReactionTask object bound with the parent Reaction object (that created it) and task.
+         * Creates a new ReactionTask object bound with the parent Reaction object (that created it) and task.
          *
-         * @param parent                 the Reaction object that spawned this ReactionTask.
-         * @param priority               the priority to use when executing this task.
-         * @param group_descriptor       the descriptor for the group that this task should run in
-         * @param thread_pool_descriptor the descriptor for the thread pool that this task should be queued in
-         * @param callback               the data bound callback to be executed in the thread pool.
+         * @param parent            The Reaction object that spawned this ReactionTask.
+         * @param request_inline    If this task should try to execute inline if should_inline allows it
+         * @param priority_fn       A function that can be called to get the priority of this task
+         * @param inline_fn         A function that can be called to get if this task can be executed inline
+         * @param thread_pool_fn    A function that can be called to get the thread pool descriptor for this task
+         * @param groups_fn         A function that can be called to get the list of group descriptors for this task
          */
-        Task(ReactionType& parent,
-             const int& priority,
-             const util::GroupDescriptor& group_descriptor,
-             const util::ThreadPoolDescriptor& thread_pool_descriptor,
-             TaskFunction&& callback)
+        template <typename GetPriority, typename GetInline, typename GetGroups, typename GetThreadPool>
+        ReactionTask(const std::shared_ptr<Reaction>& parent,
+                     const bool& request_inline,
+                     const GetPriority& priority_fn,
+                     const GetInline& inline_fn,
+                     const GetThreadPool& thread_pool_fn,
+                     const GetGroups& groups_fn)
             : parent(parent)
-            , priority(priority)
-            , stats(std::make_shared<message::ReactionStatistics>(parent.identifiers,
-                                                                  parent.id,
-                                                                  id,
-                                                                  current_task != nullptr ? current_task->parent.id : 0,
-                                                                  current_task != nullptr ? current_task->id : 0,
-                                                                  clock::now(),
-                                                                  clock::time_point(std::chrono::seconds(0)),
-                                                                  clock::time_point(std::chrono::seconds(0)),
-                                                                  nullptr))
-            , emit_stats(parent.emit_stats && (current_task != nullptr ? current_task->emit_stats : true))
-            , group_descriptor(group_descriptor)
-            , thread_pool_descriptor(thread_pool_descriptor)
-            , callback(std::move(callback)) {}
+            , id(next_id())
+            , priority(priority_fn(*this))
+            , should_inline(inline_fn(*this))
+            , pool_descriptor(thread_pool_fn(*this))
+            , group_descriptors(groups_fn(*this))
+            , statistics(make_statistics()) {
+            // Increment the number of active tasks
+            if (parent != nullptr) {
+                parent->active_tasks.fetch_add(1, std::memory_order_release);
+            }
 
-
-        /**
-         * @brief Runs the internal data bound task and times it.
-         *
-         * @details
-         *  This runs the internal data bound task and times how long the execution takes. These figures can then be
-         *  used in a debugging context to calculate how long callbacks are taking to run.
-         */
-        inline void run() {
-
-            // Update our current task
-            const std::shared_ptr<Task> lock(current_task, [](Task* t) { current_task = t; });
-            current_task = this;
-
-            // Run our callback
-            callback(*this);
+            // Calculate inline running
+            switch (should_inline) {
+                case util::Inline::NEVER: run_inline = false; break;
+                case util::Inline::ALWAYS: run_inline = true; break;
+                case util::Inline::NEUTRAL: run_inline = request_inline; break;
+            }
         }
 
-        /**
-         * @brief Generate a new unique task id
-         *
-         * @return a new unique task id
-         */
-        static inline NUClear::id_t new_task_id() {
-            return ++task_id_source;
-        }
+        // No copying or moving of tasks (use unique_ptrs to manage tasks)
+        ReactionTask(const ReactionTask&)            = delete;
+        ReactionTask& operator=(const ReactionTask&) = delete;
+        ReactionTask(ReactionTask&&)                 = delete;
+        ReactionTask& operator=(ReactionTask&&)      = delete;
 
-        /// @brief the parent Reaction object which spawned this
-        ReactionType& parent;
-        /// @brief the task id of this task (the sequence number of this particular task)
-        NUClear::id_t id{new_task_id()};
-        /// @brief the priority to run this task at
+        /**
+         * Destructor for the ReactionTask object.
+         *
+         * This will decrement the active_tasks counter on the parent Reaction object.
+         */
+        ~ReactionTask();
+
+        /**
+         * Runs the internal data bound task.
+         */
+        void run() noexcept;
+
+        /**
+         * Generate a new unique task id.
+         *
+         * @return A new unique task id
+         */
+        static NUClear::id_t next_id();
+
+        /// The parent Reaction object which spawned this, or nullptr if this is a floating task
+        std::shared_ptr<Reaction> parent;
+        /// The task id of this task (the sequence number of this particular task)
+        NUClear::id_t id;
+        /// If the task should execute inline
+        bool run_inline{false};
+
+        /// The priority to run this task at
         int priority;
-        /// @brief the statistics object that persists after this for information and debugging
-        std::shared_ptr<message::ReactionStatistics> stats;
-        /// @brief if these stats are safe to emit. It should start true, and as soon as we are a reaction based on
-        /// reaction statistics becomes false for all created tasks. This is to stop infinite loops of death.
-        bool emit_stats;
-
-        /// @brief details about the group that this task will run in
-        util::GroupDescriptor group_descriptor;
-
-        /// @brief details about the thread pool that this task will run from, this will also influence what task queue
+        /// If the task should be executed inline (in the current thread) or not
+        util::Inline should_inline{util::Inline::NEUTRAL};
+        /// Details about the thread pool that this task will run from, this will also influence what task queue
         /// the tasks will be queued on
-        util::ThreadPoolDescriptor thread_pool_descriptor;
+        std::shared_ptr<const util::ThreadPoolDescriptor> pool_descriptor;
+        /// Details about the groups that this task will run in
+        std::set<std::shared_ptr<const util::GroupDescriptor>> group_descriptors;
 
-        /// @brief the data bound callback to be executed
+        /// The statistics object that records run details about this reaction task
+        /// This will be nullptr if this task is ineligible to emit stats (e.g. it would cause a loop)
+        std::shared_ptr<message::ReactionStatistics> statistics;
+
+        /// The data bound callback to be executed
         /// @attention note this must be last in the list as the this pointer is passed to the callback generator
         TaskFunction callback;
+
+        /**
+         * This operator compares two ReactionTask objects based on their priority and ID.
+         *
+         * It sorts tasks in the order that they should be executed by comparing their priority the the order they were
+         * created. The task that should execute first will have the lowest sort order value and the task that should
+         * execute last will have the highest sort order.
+         *
+         * The task with higher priority is considered less.
+         * If two tasks have equal priority, the one with the lower ID is considered less.
+         *
+         * @param lhs The left hand side of the comparison
+         * @param rhs The right hand side of the comparison
+         *
+         * @return true if the current object is less than the other object, false otherwise.
+         */
+        friend bool operator<(const ReactionTask& lhs, const ReactionTask& rhs) {
+            return lhs.priority == rhs.priority ? lhs.id < rhs.id : lhs.priority > rhs.priority;
+        }
+
+    private:
+        /**
+         * Creates a new ReactionStatistics object for this task.
+         *
+         * @return A new ReactionStatistics object for this task
+         */
+        std::shared_ptr<message::ReactionStatistics> make_statistics();
     };
-
-    // Initialize our id source
-    template <typename ReactionType>
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-    std::atomic<NUClear::id_t> Task<ReactionType>::task_id_source(0);
-
-    // Initialize our current task
-    template <typename ReactionType>
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-    ATTRIBUTE_TLS Task<ReactionType>* Task<ReactionType>::current_task = nullptr;
-
-    // Alias the templated Task so that public API remains intact
-    class Reaction;
-    using ReactionTask = Task<Reaction>;
 
 }  // namespace threading
 }  // namespace NUClear
 
-#endif  // NUCLEAR_THREADING_REACTIONTASK_HPP
+#endif  // NUCLEAR_THREADING_REACTION_TASK_HPP

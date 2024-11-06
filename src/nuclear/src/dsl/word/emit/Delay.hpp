@@ -24,7 +24,7 @@
 #define NUCLEAR_DSL_WORD_EMIT_DELAY_HPP
 
 #include "../../operation/ChronoTask.hpp"
-#include "Direct.hpp"
+#include "Inline.hpp"
 
 namespace NUClear {
 namespace dsl {
@@ -32,24 +32,16 @@ namespace dsl {
         namespace emit {
 
             /**
-             * @brief
-             *  This will emit data, after the provided delay.
+             * This will emit data, after the provided delay.
              *
-             * @details
-             *  @code emit<Scope::DELAY>(data, delay(ticks), dataType); @endcode
-             *  Emissions under this scope will wait for the provided time delay, and then emit the object utilising a
-             *  local emit (that is, normal thread pool distribution).
+             * @code emit<Scope::DELAY>(data, delay(ticks), dataType); @endcode
+             * Emissions under this scope will wait for the provided time delay, and then emit the object utilising a
+             * local emit (that is, normal thread pool distribution).
              *
-             * @param data
-             *  the data to emit
-             * @param delay(ticks)
-             *  the time to wait before emitting this object. Use delay to specify the unit in which to measure the
-             *  ticks, this will default to clock duration, but can accept any of the defined std::chrono durations
-             *  (nanoseconds, microseconds, milliseconds, seconds, minutes, hours). Note that you can also define your
-             *  own unit:  See http://en.cppreference.com/w/cpp/chrono/duration. Use an int to specify the number of
-             *  ticks to wait.
-             * @tparam DataType
-             *  the datatype of the object to emit
+             * @tparam DataType The datatype of the object to emit
+             *
+             * @param data  The data to emit
+             * @param delay The time to wait before emitting this object.
              */
             template <typename DataType>
             struct Delay {
@@ -71,7 +63,7 @@ namespace dsl {
                         -1);  // Our ID is -1 as we will remove ourselves
 
                     // Send this straight to the chrono controller
-                    emit::Direct<operation::ChronoTask>::emit(powerplant, msg);
+                    emit::Inline<operation::ChronoTask>::emit(powerplant, msg);
                 }
 
                 static void emit(PowerPlant& powerplant,
@@ -91,12 +83,12 @@ namespace dsl {
                         -1);  // Our ID is -1 as we will remove ourselves
 
                     // Send this straight to the chrono controller
-                    emit::Direct<operation::ChronoTask>::emit(powerplant, msg);
+                    emit::Inline<operation::ChronoTask>::emit(powerplant, msg);
                 }
             };
 
         }  // namespace emit
-    }      // namespace word
+    }  // namespace word
 }  // namespace dsl
 }  // namespace NUClear
 

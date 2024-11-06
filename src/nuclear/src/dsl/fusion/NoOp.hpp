@@ -20,15 +20,17 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef NUCLEAR_DSL_FUSION_NOOP_HPP
-#define NUCLEAR_DSL_FUSION_NOOP_HPP
+#ifndef NUCLEAR_DSL_FUSION_NO_OP_HPP
+#define NUCLEAR_DSL_FUSION_NO_OP_HPP
 
 #include <typeindex>
 
 #include "../../threading/Reaction.hpp"
 #include "../../threading/ReactionTask.hpp"
 #include "../../util/GroupDescriptor.hpp"
+#include "../../util/Inline.hpp"
 #include "../../util/ThreadPoolDescriptor.hpp"
+#include "../word/Pool.hpp"
 #include "../word/Priority.hpp"
 
 namespace NUClear {
@@ -36,71 +38,93 @@ namespace dsl {
     namespace fusion {
 
         /**
-         * @brief Struct to act as a DSL word that does nothing. Used as a placeholder to satisfy some dead template
-         *        branches that are required for the code to compile.
+         * Struct to act as a DSL word that does nothing.
+         * Used as a placeholder to satisfy some dead template branches that are required for the code to compile.
          */
         struct NoOp {
 
             template <typename DSL, typename... Args>
-            static inline void bind(const std::shared_ptr<threading::Reaction>& /*reaction*/, Args... /*args*/) {
+            static void bind(const std::shared_ptr<threading::Reaction>& /*reaction*/, Args... /*args*/) {
                 // Empty as this is a no-op placeholder
             }
 
             template <typename DSL>
-            static inline std::tuple<> get(const threading::Reaction& /*reaction*/) {
+            static std::tuple<> get(const threading::ReactionTask& /*task*/) {
                 return {};
             }
 
             template <typename DSL>
-            static inline bool precondition(const threading::Reaction& /*reaction*/) {
+            static std::set<std::shared_ptr<const util::GroupDescriptor>> group(
+                const threading::ReactionTask& /*task*/) {
+                return {};
+            }
+
+            template <typename DSL>
+            static util::Inline run_inline(const threading::ReactionTask& /*task*/) {
+                return util::Inline::NEUTRAL;
+            }
+
+            template <typename DSL>
+            static bool precondition(const threading::ReactionTask& /*task*/) {
                 return true;
             }
 
             template <typename DSL>
-            static inline int priority(const threading::Reaction& /*reaction*/) {
+            static void post_run(const threading::ReactionTask& /*task*/) {
+                // Empty as this is a no-op placeholder
+            }
+
+            template <typename DSL>
+            static void pre_run(const threading::ReactionTask& /*task*/) {
+                // Empty as this is a no-op placeholder
+            }
+
+            template <typename DSL>
+            static int priority(const threading::ReactionTask& /*task*/) {
                 return word::Priority::NORMAL::value;
             }
 
             template <typename DSL>
-            static inline util::GroupDescriptor group(const threading::Reaction& /*reaction*/) {
-                return util::GroupDescriptor{};
+            static std::shared_ptr<const util::ThreadPoolDescriptor> pool(const threading::ReactionTask& /*task*/) {
+                return word::Pool<>::descriptor();
             }
 
             template <typename DSL>
-            static inline util::ThreadPoolDescriptor pool(const threading::Reaction& /*reaction*/) {
-                return util::ThreadPoolDescriptor{};
-            }
-
-            template <typename DSL>
-            static inline void postcondition(const threading::ReactionTask& /*task*/) {
-                // Empty as this is a no-op placeholder
+            static std::tuple<> scope(const threading::ReactionTask& /*task*/) {
+                return {};
             }
         };
 
         /**
-         * @brief Struct to act as Parsed DSL statement that does nothing. Used as a placeholder to satisfy some
-         *        dead template branches that are required for the code to compile.
+         * Struct to act as Parsed DSL statement that does nothing.
+         * Used as a placeholder to satisfy some dead template branches that are required for the code to compile.
          */
         struct ParsedNoOp {
             struct DSL {};
 
             static std::tuple<> bind(const std::shared_ptr<threading::Reaction>&);
 
-            static std::tuple<> get(threading::Reaction&);
+            static std::tuple<> get(threading::ReactionTask&);
 
-            static bool precondition(threading::Reaction&);
+            static std::set<std::shared_ptr<const util::GroupDescriptor>> group(threading::ReactionTask&);
 
-            static int priority(threading::Reaction&);
+            static util::Inline run_inline(threading::ReactionTask&);
 
-            static util::GroupDescriptor group(threading::Reaction&);
+            static bool precondition(threading::ReactionTask&);
 
-            static util::ThreadPoolDescriptor pool(threading::Reaction&);
+            static void post_run(threading::ReactionTask&);
 
-            static void postcondition(threading::ReactionTask&);
+            static void pre_run(threading::ReactionTask&);
+
+            static int priority(threading::ReactionTask&);
+
+            static std::shared_ptr<const util::ThreadPoolDescriptor> pool(threading::ReactionTask&);
+
+            static std::tuple<> scope(threading::ReactionTask&);
         };
 
     }  // namespace fusion
 }  // namespace dsl
 }  // namespace NUClear
 
-#endif  // NUCLEAR_DSL_FUSION_NOOP_HPP
+#endif  // NUCLEAR_DSL_FUSION_NO_OP_HPP

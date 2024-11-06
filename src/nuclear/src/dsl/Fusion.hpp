@@ -27,24 +27,30 @@
 #include "fusion/BindFusion.hpp"
 #include "fusion/GetFusion.hpp"
 #include "fusion/GroupFusion.hpp"
+#include "fusion/InlineFusion.hpp"
 #include "fusion/PoolFusion.hpp"
-#include "fusion/PostconditionFusion.hpp"
+#include "fusion/PostRunFusion.hpp"
+#include "fusion/PreRunFusion.hpp"
 #include "fusion/PreconditionFusion.hpp"
 #include "fusion/PriorityFusion.hpp"
+#include "fusion/ScopeFusion.hpp"
 
 namespace NUClear {
 namespace dsl {
 
-    /// @brief All of the words from a reaction handle "fused" together into one type
+    /// All of the words from a reaction handle "fused" together into one type
     template <typename... Words>
     struct Fusion
-        : public fusion::BindFusion<Words...>
-        , public fusion::GetFusion<Words...>
-        , public fusion::PreconditionFusion<Words...>
-        , public fusion::PriorityFusion<Words...>
-        , public fusion::GroupFusion<Words...>
-        , public fusion::PoolFusion<Words...>
-        , public fusion::PostconditionFusion<Words...> {};
+        : fusion::BindFusion<Words...>
+        , fusion::GetFusion<Words...>
+        , fusion::GroupFusion<Words...>
+        , fusion::InlineFusion<Words...>
+        , fusion::PoolFusion<Words...>
+        , fusion::PostRunFusion<Words...>
+        , fusion::PreRunFusion<Words...>
+        , fusion::PreconditionFusion<Words...>
+        , fusion::PriorityFusion<Words...>
+        , fusion::ScopeFusion<Words...> {};
 
 }  // namespace dsl
 }  // namespace NUClear

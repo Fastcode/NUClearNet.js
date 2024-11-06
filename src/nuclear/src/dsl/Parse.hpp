@@ -35,41 +35,57 @@ namespace dsl {
         using DSL = Fusion<Sentence...>;
 
         template <typename... Arguments>
-        static inline auto bind(const std::shared_ptr<threading::Reaction>& r, Arguments&&... args)
+        static auto bind(const std::shared_ptr<threading::Reaction>& r, Arguments&&... args)
             -> decltype(DSL::template bind<Parse<Sentence...>>(r, std::forward<Arguments>(args)...)) {
             return DSL::template bind<Parse<Sentence...>>(r, std::forward<Arguments>(args)...);
         }
 
-        static inline auto get(threading::Reaction& r)
+        static auto get(threading::ReactionTask& task)
             -> decltype(std::conditional_t<fusion::has_get<DSL>::value, DSL, fusion::NoOp>::template get<
-                        Parse<Sentence...>>(r)) {
+                        Parse<Sentence...>>(task)) {
             return std::conditional_t<fusion::has_get<DSL>::value, DSL, fusion::NoOp>::template get<Parse<Sentence...>>(
-                r);
+                task);
         }
 
-        static inline bool precondition(threading::Reaction& r) {
-            return std::conditional_t<fusion::has_precondition<DSL>::value, DSL, fusion::NoOp>::template precondition<
-                Parse<Sentence...>>(r);
-        }
-
-        static inline int priority(threading::Reaction& r) {
-            return std::conditional_t<fusion::has_priority<DSL>::value, DSL, fusion::NoOp>::template priority<
-                Parse<Sentence...>>(r);
-        }
-
-        static inline util::GroupDescriptor group(threading::Reaction& r) {
+        static std::set<std::shared_ptr<const util::GroupDescriptor>> group(threading::ReactionTask& task) {
             return std::conditional_t<fusion::has_group<DSL>::value, DSL, fusion::NoOp>::template group<
-                Parse<Sentence...>>(r);
+                Parse<Sentence...>>(task);
         }
 
-        static inline util::ThreadPoolDescriptor pool(threading::Reaction& r) {
+        static util::Inline run_inline(threading::ReactionTask& task) {
+            return std::conditional_t<fusion::has_run_inline<DSL>::value, DSL, fusion::NoOp>::template run_inline<
+                Parse<Sentence...>>(task);
+        }
+
+        static std::shared_ptr<const util::ThreadPoolDescriptor> pool(threading::ReactionTask& task) {
             return std::conditional_t<fusion::has_pool<DSL>::value, DSL, fusion::NoOp>::template pool<
-                Parse<Sentence...>>(r);
+                Parse<Sentence...>>(task);
         }
 
-        static inline void postcondition(threading::ReactionTask& r) {
-            std::conditional_t<fusion::has_postcondition<DSL>::value, DSL, fusion::NoOp>::template postcondition<
-                Parse<Sentence...>>(r);
+        static void post_run(threading::ReactionTask& task) {
+            std::conditional_t<fusion::has_post_run<DSL>::value, DSL, fusion::NoOp>::template post_run<
+                Parse<Sentence...>>(task);
+        }
+        static void pre_run(threading::ReactionTask& task) {
+            std::conditional_t<fusion::has_pre_run<DSL>::value, DSL, fusion::NoOp>::template pre_run<
+                Parse<Sentence...>>(task);
+        }
+
+        static bool precondition(threading::ReactionTask& task) {
+            return std::conditional_t<fusion::has_precondition<DSL>::value, DSL, fusion::NoOp>::template precondition<
+                Parse<Sentence...>>(task);
+        }
+
+        static int priority(threading::ReactionTask& task) {
+            return std::conditional_t<fusion::has_priority<DSL>::value, DSL, fusion::NoOp>::template priority<
+                Parse<Sentence...>>(task);
+        }
+
+        static auto scope(threading::ReactionTask& task)
+            -> decltype(std::conditional_t<fusion::has_scope<DSL>::value, DSL, fusion::NoOp>::template scope<
+                        Parse<Sentence...>>(task)) {
+            return std::conditional_t<fusion::has_scope<DSL>::value, DSL, fusion::NoOp>::template scope<Parse<Sentence...>>(
+                task);
         }
     };
 

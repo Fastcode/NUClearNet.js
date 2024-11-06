@@ -20,34 +20,36 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef NUCLEAR_DSL_WORD_MAINTHREAD_HPP
-#define NUCLEAR_DSL_WORD_MAINTHREAD_HPP
+#ifndef NUCLEAR_DSL_WORD_MAIN_THREAD_HPP
+#define NUCLEAR_DSL_WORD_MAIN_THREAD_HPP
 
-#include "../../threading/ReactionTask.hpp"
-#include "../../util/ThreadPoolDescriptor.hpp"
+#include "Pool.hpp"
 
 namespace NUClear {
 namespace dsl {
     namespace word {
 
-        /**
-         * @brief
-         *  This is used to specify that the associated task will need to execute using the main thread.
-         *
-         * @details
-         *  @code on<Trigger<T, ...>, MainThread>() @endcode
-         *  This will most likely be used with graphics related tasks.
-         */
-        struct MainThread {
+        namespace pool {
+            /**
+             * This struct is here to define the main thread pool.
+             */
+            struct Main {
+                static constexpr const char* name = "Main";
+                static constexpr int concurrency  = 1;
+            };
+        }  // namespace pool
 
-            template <typename DSL>
-            static inline util::ThreadPoolDescriptor pool(const threading::Reaction& /*reaction*/) {
-                return util::ThreadPoolDescriptor{util::ThreadPoolDescriptor::MAIN_THREAD_POOL_ID, 1};
-            }
-        };
+        /**
+         * This is used to specify that the associated task will need to execute using the main thread.
+         *
+         * @code on<Trigger<T, ...>, MainThread>() @endcode
+         * This can be used with graphics related tasks.
+         * For example, OpenGL requires all calls to be made from the main thread.
+         */
+        struct MainThread : Pool<pool::Main> {};
 
     }  // namespace word
 }  // namespace dsl
 }  // namespace NUClear
 
-#endif  // NUCLEAR_DSL_WORD_MAINTHREAD_HPP
+#endif  // NUCLEAR_DSL_WORD_MAIN_THREAD_HPP
