@@ -29,11 +29,12 @@
 namespace NUClear {
 
 /**
- * @brief This class holds the configuration for a PowerPlant.
+ * This class holds the configuration for a PowerPlant.
  */
 struct Configuration {
-    /// @brief The number of threads the system will use
-    size_t thread_count = std::thread::hardware_concurrency() == 0 ? 2 : std::thread::hardware_concurrency();
+    /// The number of threads the system will use for the default thread pool
+    int default_pool_concurrency =
+        std::thread::hardware_concurrency() == 0 ? 2 : int(std::thread::hardware_concurrency());
 };
 
 }  // namespace NUClear

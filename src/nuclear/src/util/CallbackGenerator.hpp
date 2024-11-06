@@ -20,18 +20,17 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef NUCLEAR_UTIL_CALLBACKGENERATOR_HPP
-#define NUCLEAR_UTIL_CALLBACKGENERATOR_HPP
+#ifndef NUCLEAR_UTIL_CALLBACK_GENERATOR_HPP
+#define NUCLEAR_UTIL_CALLBACK_GENERATOR_HPP
 
 #include <type_traits>
 
-#include "../dsl/trait/is_transient.hpp"
-#include "../dsl/word/emit/Direct.hpp"
-#include "../util/GeneratedCallback.hpp"
+#include "../dsl/word/emit/Inline.hpp"
+#include "../message/ReactionStatistics.hpp"
 #include "../util/MergeTransient.hpp"
 #include "../util/TransientDataElements.hpp"
 #include "../util/apply.hpp"
-#include "../util/demangle.hpp"
+#include "../util/unpack.hpp"
 #include "../util/update_current_thread_priority.hpp"
 
 namespace NUClear {
@@ -69,22 +68,33 @@ namespace util {
                 std::get<DIndex>(data))...);
         }
 
-        GeneratedCallback operator()(threading::Reaction& r) {
+        std::unique_ptr<threading::ReactionTask> operator()(const std::shared_ptr<threading::Reaction>& r,
+                                                            const bool& request_inline) {
 
-            // Add one to our active tasks
-            ++r.active_tasks;
+            using ReactionEvent = message::ReactionEvent;
+            using Event         = message::ReactionEvent::Event;
+
+            auto task = std::make_unique<threading::ReactionTask>(r,
+                                                                  request_inline,
+                                                                  DSL::priority,
+                                                                  DSL::run_inline,
+                                                                  DSL::pool,
+                                                                  DSL::group);
 
             // Check if we should even run
-            if (!DSL::precondition(r)) {
-                // Take one from our active tasks
-                --r.active_tasks;
+            if (!DSL::precondition(*task)) {
 
-                // We cancel our execution by returning an empty function
-                return {};
+                // Set the created status as rejected and emit it
+                if (task->statistics != nullptr) {
+                    PowerPlant::powerplant->emit(std::make_unique<ReactionEvent>(Event::BLOCKED, task->statistics));
+                }
+
+                // Nothing to run
+                return nullptr;
             }
 
             // Bind our data to a variable (this will run in the dispatching thread)
-            auto data = DSL::get(r);
+            auto data = DSL::get(*task);
 
             // Merge our transient data in
             merge_transients(data,
@@ -93,49 +103,56 @@ namespace util {
 
             // Check if our data is good (all the data exists) otherwise terminate the call
             if (!check_data(data)) {
-                // Take one from our active tasks
-                --r.active_tasks;
 
-                // We cancel our execution by returning an empty function
-                return {};
+                // Set the created status as no data and emit it
+                if (task->statistics != nullptr) {
+                    PowerPlant::powerplant->emit(
+                        std::make_unique<ReactionEvent>(Event::MISSING_DATA, task->statistics));
+                }
+
+                // Nothing to run
+                return nullptr;
+            }
+
+            // Set the created status as no data and emit it
+            if (task->statistics != nullptr) {
+                PowerPlant::powerplant->emit(std::make_unique<ReactionEvent>(Event::CREATED, task->statistics));
             }
 
             // We have to make a copy of the callback because the "this" variable can go out of scope
-            auto c = callback;
-            return GeneratedCallback(DSL::priority(r),
-                                     DSL::group(r),
-                                     DSL::pool(r),
-                                     [c, data](threading::ReactionTask& task) noexcept {
-                                         // Update our thread's priority to the correct level
-                                         update_current_thread_priority(task.priority);
+            auto c         = callback;
+            task->callback = [c, data](threading::ReactionTask& task) noexcept {
+                // Update our thread's priority to the correct level
+                update_current_thread_priority(task.priority);
 
-                                         // Record our start time
-                                         task.stats->started = clock::now();
+                if (task.statistics != nullptr) {
+                    task.statistics->started = message::ReactionStatistics::Event::now();
+                    PowerPlant::powerplant->emit(std::make_unique<ReactionEvent>(Event::STARTED, task.statistics));
+                }
 
-                                         // We have to catch any exceptions
-                                         try {
-                                             // We call with only the relevant arguments to the passed function
-                                             util::apply_relevant(c, std::move(data));
-                                         }
-                                         catch (...) {
-                                             // Catch our exception if it happens
-                                             task.stats->exception = std::current_exception();
-                                         }
+                // We have to catch any exceptions
+                try {
+                    auto scope = DSL::scope(task);             // Acquire the scope
+                    DSL::pre_run(task);                        // Pre run tasks
+                    util::apply_relevant(c, std::move(data));  // Run the callback
+                    DSL::post_run(task);                       // Post run tasks
+                    std::ignore = scope;                       // Ignore unused variable warning
+                }
+                catch (...) {
+                    // Catch our exception if it happens
+                    if (task.statistics != nullptr) {
+                        task.statistics->exception = std::current_exception();
+                    }
+                }
 
-                                         // Our finish time
-                                         task.stats->finished = clock::now();
+                if (task.statistics != nullptr) {
+                    task.statistics->finished = message::ReactionStatistics::Event::now();
+                    PowerPlant::powerplant->emit(std::make_unique<ReactionEvent>(Event::FINISHED, task.statistics));
+                    PowerPlant::powerplant->emit_shared<dsl::word::emit::Local>(task.statistics);
+                }
+            };
 
-                                         // Run our postconditions
-                                         DSL::postcondition(task);
-
-                                         // Take one from our active tasks
-                                         --task.parent.active_tasks;
-
-                                         // Emit our reaction statistics if it wouldn't cause a loop
-                                         if (task.emit_stats) {
-                                             PowerPlant::powerplant->emit_shared<dsl::word::emit::Direct>(task.stats);
-                                         }
-                                     });
+            return task;
         }
 
         Function callback;
@@ -146,4 +163,4 @@ namespace util {
 }  // namespace util
 }  // namespace NUClear
 
-#endif  // NUCLEAR_UTIL_CALLBACKGENERATOR_HPP
+#endif  // NUCLEAR_UTIL_CALLBACK_GENERATOR_HPP

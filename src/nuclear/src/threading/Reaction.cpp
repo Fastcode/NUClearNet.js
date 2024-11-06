@@ -22,14 +22,32 @@
 
 #include "Reaction.hpp"
 
+#include <memory>
+#include <utility>
+
+#include "../id.hpp"
+#include "ReactionIdentifiers.hpp"
+#include "ReactionTask.hpp"
+
 namespace NUClear {
 namespace threading {
 
-    // Initialize our reaction source
-    std::atomic<NUClear::id_t> Reaction::reaction_id_source(0);  // NOLINT
-
     Reaction::Reaction(Reactor& reactor, ReactionIdentifiers&& identifiers, TaskGenerator&& generator)
-        : reactor(reactor), identifiers(std::move(identifiers)), generator(std::move(generator)) {}
+        : reactor(reactor)
+        , identifiers(std::make_shared<ReactionIdentifiers>(std::move(identifiers)))
+        , generator(std::move(generator)) {}
+
+    Reaction::~Reaction() = default;
+
+    std::unique_ptr<ReactionTask> Reaction::get_task(const bool& request_inline) {
+        // If we are not enabled, don't run
+        if (!enabled) {
+            return nullptr;
+        }
+
+        // Return the task returned by the generator
+        return generator(this->shared_from_this(), request_inline);
+    }
 
     void Reaction::unbind() {
         // Unbind
@@ -41,5 +59,12 @@ namespace threading {
     bool Reaction::is_enabled() const {
         return enabled;
     }
+
+    NUClear::id_t Reaction::next_id() {
+        // Start at 1 to make 0 an invalid id
+        static std::atomic<NUClear::id_t> id_source(1);
+        return id_source.fetch_add(1, std::memory_order_seq_cst);
+    }
+
 }  // namespace threading
 }  // namespace NUClear

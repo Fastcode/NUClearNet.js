@@ -20,12 +20,12 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef NUCLEAR_UTIL_THREADPOOL_HPP
-#define NUCLEAR_UTIL_THREADPOOL_HPP
+#ifndef NUCLEAR_UTIL_THREAD_POOL_DESCRIPTOR_HPP
+#define NUCLEAR_UTIL_THREAD_POOL_DESCRIPTOR_HPP
 
 #include <atomic>
 #include <cstddef>
-#include <cstdint>
+#include <string>
 
 #include "../id.hpp"
 
@@ -33,30 +33,30 @@ namespace NUClear {
 namespace util {
 
     /**
-     * @brief A description of a thread pool
+     * A description of a thread pool
      */
     struct ThreadPoolDescriptor {
-        /// @brief a unique identifier for this pool
-        NUClear::id_t pool_id{ThreadPoolDescriptor::DEFAULT_THREAD_POOL_ID};
 
-        /// @brief the number of threads this thread pool will use
-        size_t thread_count{0};
+        ThreadPoolDescriptor(std::string name,
+                             const int& concurrency      = 1,
+                             const bool& counts_for_idle = true,
+                             const bool& persistent      = false) noexcept
+            : name(std::move(name))
+            , concurrency(concurrency)
+            , counts_for_idle(counts_for_idle)
+            , persistent(persistent) {}
 
-        /// @brief the ID of the main thread pool (not to be confused with the ID of the main thread)
-        static const NUClear::id_t MAIN_THREAD_POOL_ID;
-        /// @brief the ID of the default thread pool
-        static const NUClear::id_t DEFAULT_THREAD_POOL_ID;
-
-        /**
-         * @brief Return the next unique ID for a new thread pool
-         */
-        static NUClear::id_t get_unique_pool_id() noexcept {
-            static std::atomic<NUClear::id_t> source{2};
-            return source++;
-        }
+        /// The name of this pool
+        std::string name;
+        /// The number of threads this thread pool will use
+        int concurrency;
+        /// If these threads count towards system idle
+        bool counts_for_idle;
+        /// If this thread pool will continue to accept tasks after shutdown and only stop when there are no more tasks
+        bool persistent;
     };
 
 }  // namespace util
 }  // namespace NUClear
 
-#endif  // NUCLEAR_UTIL_THREADPOOL_HPP
+#endif  // NUCLEAR_UTIL_THREAD_POOL_DESCRIPTOR_HPP

@@ -20,52 +20,20 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef NUCLEAR_DSL_FUSION_PRECONDITIONFUSION_HPP
-#define NUCLEAR_DSL_FUSION_PRECONDITIONFUSION_HPP
+#ifndef NUCLEAR_DSL_FUSION_PRECONDITION_FUSION_HPP
+#define NUCLEAR_DSL_FUSION_PRECONDITION_FUSION_HPP
 
-#include "../../threading/Reaction.hpp"
+#include "../../threading/ReactionTask.hpp"
 #include "../operation/DSLProxy.hpp"
-#include "has_precondition.hpp"
+#include "FindWords.hpp"
+#include "has_nuclear_dsl_method.hpp"
 
 namespace NUClear {
 namespace dsl {
     namespace fusion {
 
-        /// Type that redirects types without a precondition function to their proxy type
-        template <typename Word>
-        struct Precondition {
-            using type = std::conditional_t<has_precondition<Word>::value, Word, operation::DSLProxy<Word>>;
-        };
-
-        template <typename, typename = std::tuple<>>
-        struct PreconditionWords;
-
-        /**
-         * @brief Metafunction that extracts all of the Words with a precondition function
-         *
-         * @tparam Word1        The word we are looking at
-         * @tparam WordN        The words we have yet to look at
-         * @tparam FoundWords   The words we have found with precondition functions
-         */
-        template <typename Word1, typename... WordN, typename... FoundWords>
-        struct PreconditionWords<std::tuple<Word1, WordN...>, std::tuple<FoundWords...>>
-            : public std::conditional_t<
-                  has_precondition<typename Precondition<Word1>::type>::value,
-                  /*T*/
-                  PreconditionWords<std::tuple<WordN...>,
-                                    std::tuple<FoundWords..., typename Precondition<Word1>::type>>,
-                  /*F*/ PreconditionWords<std::tuple<WordN...>, std::tuple<FoundWords...>>> {};
-
-        /**
-         * @brief Termination case for the PreconditionWords metafunction
-         *
-         * @tparam FoundWords The words we have found with precondition functions
-         */
-        template <typename... FoundWords>
-        struct PreconditionWords<std::tuple<>, std::tuple<FoundWords...>> {
-            using type = std::tuple<FoundWords...>;
-        };
-
+        /// Make a SFINAE type to check if a word has a precondition method
+        HAS_NUCLEAR_DSL_METHOD(precondition);
 
         // Default case where there are no precondition words
         template <typename Words>
@@ -76,10 +44,10 @@ namespace dsl {
         struct PreconditionFuser<std::tuple<Word>> {
 
             template <typename DSL>
-            static inline bool precondition(threading::Reaction& reaction) {
+            static bool precondition(threading::ReactionTask& task) {
 
                 // Run our remaining precondition
-                return Word::template precondition<DSL>(reaction);
+                return Word::template precondition<DSL>(task);
             }
         };
 
@@ -88,20 +56,19 @@ namespace dsl {
         struct PreconditionFuser<std::tuple<Word1, Word2, WordN...>> {
 
             template <typename DSL>
-            static inline bool precondition(threading::Reaction& reaction) {
+            static bool precondition(threading::ReactionTask& task) {
 
                 // Perform a recursive and operation ending with the first false
-                return Word1::template precondition<DSL>(reaction)
-                       && PreconditionFuser<std::tuple<Word2, WordN...>>::template precondition<DSL>(reaction);
+                return Word1::template precondition<DSL>(task)
+                       && PreconditionFuser<std::tuple<Word2, WordN...>>::template precondition<DSL>(task);
             }
         };
 
         template <typename Word1, typename... WordN>
-        struct PreconditionFusion
-            : public PreconditionFuser<typename PreconditionWords<std::tuple<Word1, WordN...>>::type> {};
+        struct PreconditionFusion : PreconditionFuser<FindWords<has_precondition, Word1, WordN...>> {};
 
     }  // namespace fusion
 }  // namespace dsl
 }  // namespace NUClear
 
-#endif  // NUCLEAR_DSL_FUSION_PRECONDITIONFUSION_HPP
+#endif  // NUCLEAR_DSL_FUSION_PRECONDITION_FUSION_HPP

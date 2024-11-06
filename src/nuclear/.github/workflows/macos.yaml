@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup CCache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -38,6 +38,8 @@ jobs:
           ninjaVersion: 1.11.1
 
       - name: Configure CMake
+        env:
+          CXXFLAGS: -DNUCLEAR_TEST_TIME_UNIT_DEN=10
         run: |
           cmake -E make_directory build
           cmake -S . -B build \
@@ -57,7 +59,15 @@ jobs:
         run: ccache --show-stats
 
       - name: Test
-        timeout-minutes: 10
-        run: |
-          build/tests/test_nuclear
-          for f in build/tests/individual/*; do echo "Testing $f"; ./$f; done
+        timeout-minutes: 5
+        working-directory: build/tests
+        run: ctest --output-on-failure
+
+      - name: Upload Traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traces-macos
+          path: build/tests/**/*.trace
+          retention-days: 1 # This sets the artifact TTL to 1 day (minimum is 1 day)
+          overwrite: true

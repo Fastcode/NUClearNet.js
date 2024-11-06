@@ -31,9 +31,9 @@ passed in. It is important to note that the type will only be considered by NUCl
 attributes need to be stored in the DSL word type template it and use static variables, see `Sync`.
 
 There are DSL words that are not meant to be used directly but as a part of other words, see `CacheGet` and `TypeBind`.
-`TypeBind` adds the reaction to the list of reactions to be run when a `Local` or `Direct` emit is called for the data
+`TypeBind` adds the reaction to the list of reactions to be run when a `Local` or `Inline` emit is called for the data
 type. `CacheGet` gets the last value from a thread-local cache (see `ThreadSore` below) this cache is usually populated
-in the last a `Local` or `Direct` emit call for the data type.
+in the last a `Local` or `Inline` emit call for the data type.
 
 If the type you want to become a DSL extension word is not defined within your control specialise `DSLProxy<>` with the
 type. Provide the template methods to the specialisation of `DSLProxy<>` as if it were the type.
@@ -43,7 +43,7 @@ Bind
 
 .. codeblock:: c++
     template <typename DSL>
-    static inline void bind(const std::shared_ptr<threading::Reaction>& reaction, /*More arguments can be declared*/)
+    static void bind(const std::shared_ptr<threading::Reaction>& reaction, /*More arguments can be declared*/)
 
 This function is called when the reaction is bound, it should be thought of as the constructor. It is used to setup
 anything that is required by the DSL word.
@@ -56,7 +56,7 @@ destructor.
 e.g. for the `IO` word we have
 .. codeblock:: c++
     reaction->unbinders.push_back([](const threading::Reaction& r) {
-        r.reactor.emit<emit::Direct>(std::make_unique<operation::Unbind<IO>>(r.id));
+        r.reactor.emit<emit::Inline>(std::make_unique<operation::Unbind<IO>>(r.id));
     });
 
 which will tell the extension reactor that this reaction no longer exists.
@@ -68,7 +68,7 @@ Get
 
 .. codeblock:: c++
     template <typename DSL>
-    static inline T get(threading::Reaction&)
+    static T get(threading::ReactionTask& task)
 
 This is used to get the data for the callback. The returned value is passed to the callback.
 
@@ -84,7 +84,7 @@ Precondition
 
 .. codeblock:: c++
     template <typename DSL>
-    static inline bool precondition(threading::Reaction& reaction)
+    static bool precondition(threading::ReactionTask& task)
 
 A precondition is used to test if the reaction should run. On a true return the reaction will run as normal. On a false
 return the reaction will be dropped.
@@ -103,7 +103,7 @@ Reschedule
 
 .. codeblock:: c++
     template <typename DSL>
-    static inline std::unique_ptr<threading::ReactionTask> reschedule(std::unique_ptr<threading::ReactionTask>&& task)
+    static std::unique_ptr<threading::ReactionTask> reschedule(std::unique_ptr<threading::ReactionTask>&& task)
 
 The ownership of the reaction task is passed to the DSL word. The task returned will be run instead of the passed in
 reaction task. If the returned task is the one passed in the task will be run normally.
@@ -118,7 +118,7 @@ Transient
 
 .. codeblock:: c++
     template <>
-    struct is_transient<word::IO::Event> : public std::true_type {};
+    struct is_transient<word::IO::Event> : std::true_type {};
 
 When the data returned from a `get` is falsy and its type is marked transient the latest truthy data from the `get`
 return is instead used. If the data is falsy and is either not marked transient or nothing truthy has yet been returned
@@ -156,18 +156,18 @@ The template is used to have multiple static contexts.
 
         using task_ptr = std::unique_ptr<threading::ReactionTask>;
 
-        /// @brief our queue which sorts tasks by priority
+        /// Our queue which sorts tasks by priority
         static std::priority_queue<task_ptr> queue;
-        /// @brief how many tasks are currently running
+        /// How many tasks are currently running
         static volatile bool running;
-        /// @brief a mutex to ensure data consistency
+        /// A mutex to ensure data consistency
         static std::mutex mutex;
 
 Now we define the `reschedule` to interrupt any new tasks if we are currently running. Recall that NUClear is
 multithreaded so a mutex is needed when accessing the static members.
 .. codeblock:: c++
         template <typename DSL>
-        static inline std::unique_ptr<threading::ReactionTask> reschedule(
+        static std::unique_ptr<threading::ReactionTask> reschedule(
             std::unique_ptr<threading::ReactionTask>&& task) {
 
             // Lock our mutex
@@ -218,4 +218,3 @@ We need to instantiate our static members outside the class definition.
 
     template <typename SyncGroup>
     std::mutex Sync<SyncGroup>::mutex;
-

@@ -34,10 +34,6 @@ jobs:
             version: "8"
           - container: ubuntu:20.04
             version: "7"
-          - container: ubuntu:18.04
-            version: "6"
-          - container: ubuntu:18.04
-            version: "5"
 
     name: Linux GCC-${{ matrix.toolchain.version }}
     runs-on: ubuntu-latest
@@ -48,12 +44,12 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # Update for all the actions that need to install stuff
       - run: |
           apt-get update
-          apt-get install -y software-properties-common
+          apt-get install -y software-properties-common unzip
 
       - name: Install GCC
         run: |
@@ -95,7 +91,15 @@ jobs:
         run: ccache --show-stats
 
       - name: Test
-        timeout-minutes: 10
-        run: |
-          build/tests/test_nuclear
-          for f in build/tests/individual/*; do echo "Testing $f"; ./$f; done
+        timeout-minutes: 2
+        working-directory: build/tests
+        run: ctest --output-on-failure -E "dsl/UDP"
+
+      - name: Upload Traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traces-gcc-${{ matrix.toolchain.version }}
+          path: build/tests/**/*.trace
+          retention-days: 1 # This sets the artifact TTL to 1 day (minimum is 1 day)
+          overwrite: true

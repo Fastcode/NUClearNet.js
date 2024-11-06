@@ -29,25 +29,34 @@
 
 #include "../../threading/ReactionTask.hpp"
 #include "../../util/ThreadPoolDescriptor.hpp"
+#include "../../util/demangle.hpp"
 
 namespace NUClear {
 namespace dsl {
     namespace word {
 
+        namespace pool {
+            /**
+             * Thread pool descriptor for the default thread pool
+             */
+            struct Default {
+                static constexpr const char* name = "Default";
+                static constexpr int concurrency  = 0;
+            };
+        }  // namespace pool
+
         /**
-         * @brief
-         *  This is used to specify that this reaction should run in the designated thread pool
+         * This is used to specify that this reaction should run in the designated thread pool
          *
-         * @details
-         *  @code on<Trigger<T, ...>, Pool<PoolType>>() @endcode
-         *  This DSL will cause the creation of a new thread pool with a specific number of threads allocated to it.
+         * @code on<Trigger<T, ...>, Pool<PoolType>>() @endcode
+         * This DSL will cause the creation of a new thread pool with a specific number of threads allocated to it.
          *
-         *  All tasks for this reaction will be queued to run on threads from this thread pool.
+         * All tasks for this reaction will be queued to run on threads from this thread pool.
          *
-         *  Tasks in the queue are ordered based on their priority level, then their task id.
+         * Tasks in the queue are ordered based on their priority level, then their task id.
          *
-         *  When this DSL is not specified the default thread pool will be used. For tasks that need to run on the main
-         *  thread use MainThread.
+         * When this DSL is not specified the default thread pool will be used.
+         * For tasks that need to run on the main thread use MainThread.
          *
          * @attention
          *  This DSL should be used sparingly as having an increased number of threads running concurrently on the
@@ -56,39 +65,67 @@ namespace dsl {
          * @par Implements
          *  pool
          *
-         * @tparam PoolType
-         *  A struct that contains the details of the thread pool to create. This struct should contain a static int
-         *  member that sets the number of threads that should be allocated to this pool.
+         * @tparam PoolType A struct that contains the details of the thread pool to create.
+         *                  This struct should contain a static int member that sets the number of threads that
+         * should be allocated to this pool.
          *  @code
          *  struct ThreadPool {
-         *      static constexpr int thread_count = 2;
+         *      static constexpr int concurrency = 2;
          *  };
          *  @endcode
          */
-        template <typename PoolType>
+        template <typename PoolType = pool::Default>
         struct Pool {
 
-            static_assert(PoolType::thread_count > 0, "Can not have a thread pool with less than 1 thread");
-
-            /// @brief the description of the thread pool to be used for this PoolType
-            static const util::ThreadPoolDescriptor pool_descriptor;
-
-            /**
-             * @brief Sets which thread pool to use for any tasks initiated from this reaction
-             *
-             * @tparam DSL the DSL used for this reaction
-             */
-            template <typename DSL>
-            static inline util::ThreadPoolDescriptor pool(const threading::Reaction& /*reaction*/) {
+            // This must be a separate function, otherwise each instance of DSL will be a separate pool
+            static std::shared_ptr<const util::ThreadPoolDescriptor> descriptor() {
+                static const auto pool_descriptor =
+                    std::make_shared<const util::ThreadPoolDescriptor>(name<PoolType>(),
+                                                                       concurrency<PoolType>(),
+                                                                       counts_for_idle<PoolType>(),
+                                                                       persistent<PoolType>());
                 return pool_descriptor;
             }
-        };
 
-        // Initialise the thread pool descriptor
-        template <typename PoolType>
-        const util::ThreadPoolDescriptor Pool<PoolType>::pool_descriptor = {
-            util::ThreadPoolDescriptor::get_unique_pool_id(),
-            PoolType::thread_count};
+            template <typename DSL>
+            static std::shared_ptr<const util::ThreadPoolDescriptor> pool(const threading::ReactionTask& /*task*/) {
+                return descriptor();
+            }
+
+        private:
+            template <typename U>
+            static auto name() -> decltype(U::name) {
+                return U::name;
+            }
+            template <typename U, typename... A>
+            static std::string name(const A&... /*unused*/) {
+                return util::demangle(typeid(U).name());
+            }
+
+            template <typename U>
+            static constexpr auto concurrency() -> decltype(U::concurrency) {
+                return U::concurrency;
+            }
+            // No default for thread count
+
+            template <typename U>
+            static constexpr auto counts_for_idle() -> decltype(U::counts_for_idle) {
+                return U::counts_for_idle;
+            }
+            template <typename U, typename... A>
+            static constexpr bool counts_for_idle(const A&... /*unused*/) {
+                return true;
+            }
+
+            template <typename U>
+            static constexpr auto persistent() -> decltype(U::persistent) {
+                return U::persistent;
+            }
+            template <typename U, typename... A>
+            static constexpr bool persistent(const A&... /*unused*/) {
+                return false;
+            }
+        };
 
     }  // namespace word
 }  // namespace dsl
