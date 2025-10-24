@@ -140,6 +140,9 @@ export declare class NUClearNet {
   /** Emitted when NUClearNet receives any packet */
   public on(event: 'nuclear_packet', callback: (packet: NUClearNetMaybeTypedPacket) => void): this;
 
+  /** Emitted when connection to the network is lost */
+  public on(event: 'disconnect', callback: () => void): this;
+
   /** Emitted when the given packet is received */
   public on(event: string, callback: (packet: NUClearNetTypedPacket) => void): this;
 

@@ -44,6 +44,7 @@ class NUClearNet extends EventEmitter {
         event !== 'nuclear_packet' &&
         event !== 'newListener' &&
         event !== 'removeListener' &&
+        event !== 'disconnect' &&
         this.listenerCount(event) === 0
       ) {
         const hash = this._net.hash(event);
@@ -60,6 +61,7 @@ class NUClearNet extends EventEmitter {
         event !== 'nuclear_packet' &&
         event !== 'newListener' &&
         event !== 'removeListener' &&
+        event !== 'disconnect' &&
         this.listenerCount(event) === 0
       ) {
         // Get our hash and delete it
@@ -124,7 +126,17 @@ class NUClearNet extends EventEmitter {
 
       // Only process if we're active
       if (this._active) {
-        this._net.process();
+        try {
+          this._net.process();
+        } catch {
+          // An error occurred during processing, disconnect.
+          // This needs to check again if this is still active, as multiple
+          // `_onWait` calls run concurrently, and only the first one to fail
+          // should disconnect.
+          if (this._active) {
+            this.disconnect();
+          }
+        }
       }
 
       // Sometimes due to weird timing artifacts we run out of these
@@ -153,11 +165,13 @@ class NUClearNet extends EventEmitter {
     const mtu = options.mtu === undefined ? 1500 : options.mtu;
 
     // Connect to the network
-    this._active = true;
     this._net.reset(name, address, port, mtu);
 
     // Run our first "process" to kick things off
     this._net.process();
+
+    // If the first process is successful we are active
+    this._active = true;
   }
 
   disconnect() {
@@ -165,6 +179,8 @@ class NUClearNet extends EventEmitter {
 
     this._active = false;
     this._net.shutdown();
+
+    this.emit('disconnect');
   }
 
   send(options) {
