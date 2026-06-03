@@ -35,8 +35,11 @@
 
 #include "../util/network/resolve.hpp"
 #include "../util/platform.hpp"
+#include <sstream>
+
 #include "Discovery.hpp"
 #include "Fragmentation.hpp"
+#include "Log.hpp"
 #include "Reliability.hpp"
 #include "wire_protocol.hpp"
 
@@ -62,6 +65,10 @@ namespace {
 }  // namespace
 
     const std::chrono::milliseconds NUClearNet::ANNOUNCE_INTERVAL(500);  // NOLINT(cert-err58-cpp)
+
+    void NUClearNet::set_log_level(LogLevel level) {
+        network::set_log_level(level);
+    }
 
     NUClearNet::NUClearNet()
         : discovery(std::make_unique<Discovery>(std::chrono::seconds(2)))
@@ -251,9 +258,20 @@ namespace {
 
         // Send initial announce
         last_announce = std::chrono::steady_clock::time_point{};
+
+        if (should_log(LogLevel::Info)) {
+            std::ostringstream msg;
+            msg << "reset name=" << config.name << " announce=" << config.announce_address << ':'
+                << config.announce_port << " mtu=" << config.mtu;
+            log(LogLevel::Info, "net", msg.str());
+        }
     }
 
     void NUClearNet::shutdown() {
+        if (should_log(LogLevel::Info)) {
+            log(LogLevel::Info, "net", "shutdown");
+        }
+
         // Send leave packet to announce address if we have a data socket
         if (data_fd.valid()) {
             auto leave = Discovery::build_leave_packet();
@@ -264,19 +282,35 @@ namespace {
     }
 
     void NUClearNet::process() {
+        if (should_log(LogLevel::Trace)) {
+            log(LogLevel::Trace, "net", "process begin");
+        }
+
         auto now = std::chrono::steady_clock::now();
 
         // Send announce if interval has elapsed
         if (now - last_announce >= ANNOUNCE_INTERVAL) {
             announce();
             last_announce = now;
+            if (should_log(LogLevel::Trace)) {
+                log(LogLevel::Trace, "net", "announce sent");
+            }
         }
 
         // Check for timed-out peers
-        discovery->check_timeouts();
+        discovery->check_timeouts(now);
 
         // Check for retransmissions
         auto retransmissions = reliability->check_retransmissions(fragmentation->get_packet_mtu());
+        if (should_log(LogLevel::Debug) && !retransmissions.empty()) {
+            std::ostringstream msg;
+            msg << "retransmit count=" << retransmissions.size();
+            for (const auto& req : retransmissions) {
+                msg << " peer=" << sock_str(req.target) << " packet_id=" << req.packet_id << " frag="
+                    << static_cast<int>(req.packet_no);
+            }
+            log(LogLevel::Debug, "net", msg.str());
+        }
         for (const auto& req : retransmissions) {
             // Build header on stack, scatter-write header + fragment data
             DataPacket header{};
@@ -307,7 +341,17 @@ namespace {
 
         // Schedule next event
         if (event_callback) {
-            event_callback(now + ANNOUNCE_INTERVAL);
+            const auto next = now + ANNOUNCE_INTERVAL;
+            if (should_log(LogLevel::Trace)) {
+                const auto ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(next - now).count();
+                log(LogLevel::Trace, "net", "schedule next event in " + std::to_string(ms) + "ms");
+            }
+            event_callback(next);
+        }
+
+        if (should_log(LogLevel::Trace)) {
+            log(LogLevel::Trace, "net", "process end");
         }
     }
 
@@ -350,6 +394,12 @@ namespace {
         // Unreliable broadcast: send once to the multicast/broadcast group
         // All connected peers receive it on their announce socket — receivers filter by subscription
         if (target.empty() && !reliable) {
+            if (should_log(LogLevel::Debug)) {
+                std::ostringstream msg;
+                msg << "send broadcast hash=" << hash_hex(hash) << " len=" << length
+                    << " frags=" << packet_count << " reliable=" << reliable;
+                log(LogLevel::Debug, "net", msg.str());
+            }
             send_fragments(announce_target);
             return;
         }
@@ -379,7 +429,23 @@ namespace {
         }
 
         if (targets.empty()) {
+            if (should_log(LogLevel::Debug)) {
+                std::ostringstream msg;
+                msg << "send dropped (no targets) hash=" << hash_hex(hash) << " target="
+                    << (target.empty() ? "<broadcast>" : target);
+                log(LogLevel::Debug, "net", msg.str());
+            }
             return;
+        }
+
+        if (should_log(LogLevel::Debug)) {
+            std::ostringstream msg;
+            msg << "send hash=" << hash_hex(hash) << " len=" << length << " frags=" << packet_count
+                << " reliable=" << reliable << " targets=" << targets.size();
+            if (!target.empty()) {
+                msg << " name=" << target;
+            }
+            log(LogLevel::Debug, "net", msg.str());
         }
 
         // Send each fragment to each target
@@ -395,10 +461,21 @@ namespace {
 
     void NUClearNet::set_subscriptions(const std::set<uint64_t>& subscriptions) {
         routing.set_local_subscriptions(subscriptions);
+        if (should_log(LogLevel::Debug)) {
+            std::ostringstream msg;
+            msg << "set_subscriptions count=" << subscriptions.size();
+            for (const auto& h : subscriptions) {
+                msg << ' ' << hash_hex(h);
+            }
+            log(LogLevel::Debug, "net", msg.str());
+        }
     }
 
     void NUClearNet::add_subscription(uint64_t hash) {
         routing.add_local_subscription(hash);
+        if (should_log(LogLevel::Debug)) {
+            log(LogLevel::Debug, "net", "add_subscription " + hash_hex(hash));
+        }
     }
 
     void NUClearNet::set_packet_callback(PacketCallback cb) {
@@ -459,13 +536,23 @@ namespace {
                               &source_len);
         };
 
+        std::size_t datagrams = 0;
         for (ssize_t received = recv(); received > 0; received = recv()) {
+            ++datagrams;
             process_packet(source, buffer.data(), static_cast<std::size_t>(received));
+        }
+
+        if (should_log(LogLevel::Trace) && datagrams > 0) {
+            log(LogLevel::Trace, "net", "read_socket fd=" + std::to_string(fd) + " datagrams=" + std::to_string(datagrams));
         }
     }
 
     void NUClearNet::process_packet(const sock_t& source, const uint8_t* data, std::size_t length) {
         if (!validate_header(data, length)) {
+            if (should_log(LogLevel::Warn)) {
+                log(LogLevel::Warn, "net",
+                    "invalid packet header from " + sock_str(source) + " len=" + std::to_string(length));
+            }
             return;
         }
 
@@ -512,6 +599,10 @@ namespace {
 
     void NUClearNet::process_connect_packet(const sock_t& source, const uint8_t* data, std::size_t length) {
         if (length < sizeof(ConnectPacket)) {
+            if (should_log(LogLevel::Warn)) {
+                log(LogLevel::Warn, "net",
+                    "short CONNECT from " + sock_str(source) + " len=" + std::to_string(length));
+            }
             return;
         }
         const auto* pkt = reinterpret_cast<const ConnectPacket*>(data);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
@@ -527,10 +618,17 @@ namespace {
     void NUClearNet::process_data_packet(const sock_t& source, const uint8_t* data, std::size_t length) {
         // Only accept data from connected peers
         if (!discovery->is_connected(source)) {
+            if (should_log(LogLevel::Debug)) {
+                log(LogLevel::Debug, "net", "DATA from unconnected " + sock_str(source));
+            }
             return;
         }
 
         if (length < sizeof(DataPacket)) {
+            if (should_log(LogLevel::Warn)) {
+                log(LogLevel::Warn, "net",
+                    "short DATA from " + sock_str(source) + " len=" + std::to_string(length));
+            }
             return;
         }
 
@@ -599,6 +697,13 @@ namespace {
                 }
 
                 const bool reliable_flag = (assembled.flags & RELIABLE) != 0;
+                if (should_log(LogLevel::Debug)) {
+                    std::ostringstream msg;
+                    msg << "deliver hash=" << hash_hex(assembled.hash) << " peer=" << peer_name << " ("
+                        << sock_str(source) << ") len=" << assembled.payload.size()
+                        << " reliable=" << reliable_flag;
+                    log(LogLevel::Debug, "net", msg.str());
+                }
                 packet_callback(source, peer_name, assembled.hash, reliable_flag, std::move(assembled.payload));
             }
 
@@ -618,6 +723,10 @@ namespace {
         }
 
         if (length < sizeof(ACKPacket)) {
+            if (should_log(LogLevel::Warn)) {
+                log(LogLevel::Warn, "net",
+                    "short ACK from " + sock_str(source) + " len=" + std::to_string(length));
+            }
             return;
         }
         const auto* pkt = reinterpret_cast<const ACKPacket*>(data);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)

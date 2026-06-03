@@ -32,6 +32,13 @@ export interface NUClearNetOptions {
 
   /** The MTU of the network. Used for splitting packets optimally. */
   mtu?: number;
+
+  /**
+   * Enable debug logging. `true` is equivalent to `info`.
+   * Native logs go to stderr; JavaScript logs use `console.error` with a `[NUClearNet.js]` prefix.
+   * The `NUCLEARNET_DEBUG` environment variable applies when this option is omitted.
+   */
+  debug?: boolean | 'off' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
 }
 
 /**
@@ -131,8 +138,11 @@ export declare class NUClearNet {
   /** Stores the `connect()` options. Is an empty object until `connect()` is called. */
   options: Partial<NUClearNetOptions>;
 
-  /** Create a new NUClearNet instance. */
-  public constructor();
+  /**
+   * Create a new NUClearNet instance.
+   * @param options Optional default `debug` level (overridden by `connect({ debug })`).
+   */
+  public constructor(options?: { debug?: NUClearNetOptions['debug'] });
 
   /** Emitted when a peer joins or leaves the network. */
   public on(event: 'nuclear_join' | 'nuclear_leave', callback: (peer: NUClearNetPeer) => void): this;

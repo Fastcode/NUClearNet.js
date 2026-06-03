@@ -65,6 +65,25 @@ net.on('packet_type_a', function (packet) {
 net.connect({ name: 'My Name' });
 ```
 
+## Debugging
+
+Logging is off by default. Enable tiered logs with `connect({ debug: ... })`, the constructor default, or the `NUCLEARNET_DEBUG` environment variable (`connect` wins when both are set).
+
+| Level | JavaScript | Native (stderr) |
+| ----- | ---------- | ----------------- |
+| `info` | connect, join, leave, subscriptions | reset, shutdown, peer timeouts |
+| `debug` | send, packets, listener subscribe/unsubscribe | handshake, announce/connect, send routing |
+| `trace` | process wait scheduling | `process()` ticks, socket reads |
+
+```js
+const net = new NUClearNet({ debug: 'info' });
+net.connect({ name: 'node-1', debug: 'debug' }); // overrides constructor for this session
+```
+
+```bash
+NUCLEARNET_DEBUG=info node your-app.js
+```
+
 ## API
 
 See [`index.d.ts`](./index.d.ts) for types and API details.

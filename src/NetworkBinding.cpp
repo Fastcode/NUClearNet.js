@@ -18,8 +18,10 @@
 #include "NetworkBinding.hpp"
 
 #include <set>
+#include <string>
 
 #include "NetworkListener.hpp"
+#include "nuclear/src/nuclearnet/Log.hpp"
 #include "nuclear/src/util/serialise/xxhash.hpp"
 
 namespace NUClear {
@@ -85,6 +87,48 @@ std::set<uint64_t> hashes_from_array(Napi::Env env, const Napi::Value& arg) {
     }
 
     return hashes;
+}
+
+network::LogLevel log_level_from_value(Napi::Env env, const Napi::Value& arg) {
+    if (arg.IsNumber()) {
+        const int level = arg.As<Napi::Number>().Int32Value();
+        if (level >= static_cast<int>(network::LogLevel::Off)
+            && level <= static_cast<int>(network::LogLevel::Trace)) {
+            return static_cast<network::LogLevel>(level);
+        }
+        Napi::TypeError::New(env, "setLogLevel(): level must be 0 (off) through 5 (trace)")
+            .ThrowAsJavaScriptException();
+        return network::LogLevel::Off;
+    }
+
+    if (arg.IsString()) {
+        const std::string s = arg.As<Napi::String>().Utf8Value();
+        if (s == "off") {
+            return network::LogLevel::Off;
+        }
+        if (s == "error") {
+            return network::LogLevel::Error;
+        }
+        if (s == "warn") {
+            return network::LogLevel::Warn;
+        }
+        if (s == "info") {
+            return network::LogLevel::Info;
+        }
+        if (s == "debug") {
+            return network::LogLevel::Debug;
+        }
+        if (s == "trace") {
+            return network::LogLevel::Trace;
+        }
+        Napi::TypeError::New(env,
+                             "setLogLevel(): expected off, error, warn, info, debug, or trace")
+            .ThrowAsJavaScriptException();
+        return network::LogLevel::Off;
+    }
+
+    Napi::TypeError::New(env, "setLogLevel(): expected a number or string").ThrowAsJavaScriptException();
+    return network::LogLevel::Off;
 }
 
 }  // namespace
@@ -167,8 +211,27 @@ void NetworkBinding::Send(const Napi::CallbackInfo& info) {
         this->net.send(hash, payload.data(), payload.size(), target, reliable);
     }
     catch (const std::exception& ex) {
+        if (network::should_log(network::LogLevel::Error)) {
+            network::log(network::LogLevel::Error, "binding", std::string("send failed: ") + ex.what());
+        }
         Napi::Error::New(env, ex.what()).ThrowAsJavaScriptException();
     }
+}
+
+void NetworkBinding::SetLogLevel(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "setLogLevel(): expected a level").ThrowAsJavaScriptException();
+        return;
+    }
+
+    network::LogLevel level = log_level_from_value(env, info[0]);
+    if (env.IsExceptionPending()) {
+        return;
+    }
+
+    network::NUClearNet::set_log_level(level);
 }
 
 void NetworkBinding::OnPacket(const Napi::CallbackInfo& info) {
@@ -286,6 +349,9 @@ void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
         asyncWorker->Queue();
     }
     catch (const std::exception& ex) {
+        if (network::should_log(network::LogLevel::Error)) {
+            network::log(network::LogLevel::Error, "binding", std::string("reset failed: ") + ex.what());
+        }
         Napi::Error::New(env, ex.what()).ThrowAsJavaScriptException();
     }
 }
@@ -297,6 +363,9 @@ void NetworkBinding::Process(const Napi::CallbackInfo& info) {
         this->net.process();
     }
     catch (const std::exception& ex) {
+        if (network::should_log(network::LogLevel::Error)) {
+            network::log(network::LogLevel::Error, "binding", std::string("process failed: ") + ex.what());
+        }
         Napi::Error::New(env, ex.what()).ThrowAsJavaScriptException();
     }
 }
@@ -408,6 +477,9 @@ void NetworkBinding::Init(Napi::Env env, Napi::Object exports) {
                                            static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
                                        InstanceMethod<&NetworkBinding::SetSubscriptions>(
                                            "setSubscriptions",
+                                           static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
+                                       InstanceMethod<&NetworkBinding::SetLogLevel>(
+                                           "setLogLevel",
                                            static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
                                        InstanceMethod<&NetworkBinding::Destroy>(
                                            "destroy",

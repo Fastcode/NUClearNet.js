@@ -7,6 +7,7 @@
                 'src/NetworkBinding.cpp',
                 'src/NetworkListener.cpp',
                 'src/nuclear/src/nuclearnet/Discovery.cpp',
+                'src/nuclear/src/nuclearnet/Log.cpp',
                 'src/nuclear/src/nuclearnet/Fragmentation.cpp',
                 'src/nuclear/src/nuclearnet/NUClearNet.cpp',
                 'src/nuclear/src/nuclearnet/PacketDeduplicator.cpp',

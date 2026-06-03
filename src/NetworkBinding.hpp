@@ -40,6 +40,7 @@ public:
     void Destroy(const Napi::CallbackInfo& info);
     void AddSubscription(const Napi::CallbackInfo& info);
     void SetSubscriptions(const Napi::CallbackInfo& info);
+    void SetLogLevel(const Napi::CallbackInfo& info);
 
     network::NUClearNet net;
     bool destroyed = false;
