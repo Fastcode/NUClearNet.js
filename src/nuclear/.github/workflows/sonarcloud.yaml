@@ -1,0 +1,111 @@
+name: Sonar
+on:
+  push:
+    branches:
+      - main
+      - sonar
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Ensure that only one instance of the workflow is run at a time for each branch/tag.
+# Jobs currently running on the branch/tag will be cancelled when new commits are pushed.
+# See https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions#concurrency.
+concurrency:
+  # `github.workflow` is the workflow name, `github.ref` is the current branch/tag identifier
+  group: ${{ format('{0}:{1}', github.workflow, github.ref) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-24.04
+    container: silkeh/clang:18
+    env:
+      BUILD_WRAPPER_OUT_DIR: build_wrapper_output_directory # Directory where build-wrapper output will be placed
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of analysis
+
+      - name: Install Prerequisites
+        run: |
+          apt-get update
+          apt-get install -y \
+            ccache \
+            unzip
+
+      - name: Install CMake
+        uses: lukka/get-cmake@v3.30.5
+        with:
+          cmakeVersion: 3.30.5
+          ninjaVersion: 1.11.1
+
+      - name: Setup CCache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ github.job }}
+          max-size: 100M
+
+      - name: Configure CMake
+        env:
+          CXXFLAGS: -DNUCLEAR_TEST_TIME_UNIT_DEN=10
+        run: |
+          cmake -E make_directory build
+          cmake -S . -B build \
+            -GNinja \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=ON \
+            -DCI_BUILD=ON \
+            -DENABLE_COVERAGE=ON \
+            -DENABLE_CLANG_TIDY=OFF
+
+      - name: Build the code
+        timeout-minutes: 30
+        run: cmake --build build/ --config Release
+
+      - name: Run tests to generate coverage statistics
+        timeout-minutes: 10
+        working-directory: build
+        run: ninja coverage -k 0
+
+      - name: Test Summary
+        if: ${{ !cancelled() }}
+        uses: test-summary/action@v2
+        with:
+          paths: "build/reports/tests/*.junit.xml"
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: build/reports/coverage.txt
+          retention-days: 1 # This sets the artifact TTL to 1 day (minimum is 1 day)
+          overwrite: true
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v8
+        if: ${{ !cancelled() }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            --define sonar.projectKey=Fastcode_NUClear
+            --define sonar.organization=fastcode
+            --define sonar.sources=src
+            --define sonar.tests=tests
+            --define sonar.cfamily.compile-commands=build/compile_commands.json
+            --define sonar.cfamily.llvm-cov.reportPath=build/reports/coverage.txt
+
+      - name: Upload Traces
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: traces-sonar
+          path: build/tests/**/*.trace
+          retention-days: 1 # This sets the artifact TTL to 1 day (minimum is 1 day)
+          overwrite: true
