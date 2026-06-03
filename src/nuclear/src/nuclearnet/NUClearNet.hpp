@@ -98,6 +98,9 @@ namespace network {
         /// Callback for when the system needs attention at a specific time
         using EventCallback = std::function<void(std::chrono::steady_clock::time_point)>;
 
+        /// Callback invoked when sockets are replaced so the caller can update IO event registrations
+        using SocketChangeCallback = std::function<void()>;
+
         NUClearNet();
         ~NUClearNet();
         NUClearNet(const NUClearNet&)            = delete;
@@ -166,6 +169,12 @@ namespace network {
         void set_event_callback(EventCallback cb);
 
         /**
+         * Set a callback to be invoked when sockets are replaced after a rebind.
+         * Use this to re-register IO event handlers for the new file descriptors.
+         */
+        void set_socket_change_callback(SocketChangeCallback cb);
+
+        /**
          * Get the file descriptors that should be monitored for read events.
          * When any of these become readable, call process().
          *
@@ -195,6 +204,9 @@ namespace network {
         /// Send an announce packet to the announce address
         void announce();
 
+        /// Open (or reopen) the data and announce sockets using the stored config
+        void open_sockets();
+
         /// Read and process all pending packets from a socket
         void read_socket(fd_t fd);
 
@@ -208,8 +220,8 @@ namespace network {
             iov[0].buf = reinterpret_cast<CHAR*>(const_cast<uint8_t*>(data));  // NOLINT(cppcoreguidelines-pro-type-const-cast)
             iov[0].len = static_cast<ULONG>(length);
 #else
-            iov[0].iov_base = const_cast<void*>(static_cast<const void*>(data));  // NOLINT(cppcoreguidelines-pro-type-const-cast)
-            iov[0].iov_len  = length;
+            iov[0].iov_base = const_cast<char*>(reinterpret_cast<const char*>(data));  // NOLINT(cppcoreguidelines-pro-type-const-cast,cppcoreguidelines-pro-type-reinterpret-cast)
+            iov[0].iov_len  = static_cast<decltype(iov[0].iov_len)>(length);
 #endif
             send_iov(fd, target, iov.data(), 1);
         }
@@ -241,11 +253,15 @@ namespace network {
         std::chrono::steady_clock::time_point last_announce;
         static const std::chrono::milliseconds ANNOUNCE_INTERVAL;
 
+        // Whether the sockets need to be reopened at the start of the next process() call
+        bool needs_rebind{false};
+
         // Callbacks
         PacketCallback packet_callback;
         JoinCallback join_callback;
         LeaveCallback leave_callback;
         EventCallback event_callback;
+        SocketChangeCallback socket_change_callback;
     };
 
 }  // namespace network

@@ -181,8 +181,9 @@
 
                 auto it = peers.find(source);
                 if (it == peers.end()) {
-                    // New peer — record with announce_heard = true
-                    announce_result.is_new = true;
+                    // New peer — record with announce_heard = true and initiate handshake
+                    announce_result.is_new          = true;
+                    announce_result.response_flags  = SYN;
                     if (should_log(LogLevel::Debug)) {
                         log(LogLevel::Debug, "discovery",
                             "new peer from announce name=" + name + " " + sock_str(source));
@@ -200,15 +201,6 @@
                     auto& peer = it->second;
                     peer.last_seen = now;
 
-                    // Mark announce as heard (may trigger connection if data was already confirmed)
-                    if (!peer.announce_heard) {
-                        peer.announce_heard = true;
-                        if (peer.handshake == HandshakeState::CONFIRMED) {
-                            fire_join = true;
-                            join_info = peer;
-                        }
-                    }
-
                     // Update name if it was unknown (peer added via CONNECT before announce)
                     if (peer.name.empty()) {
                         peer.name = name;
@@ -221,6 +213,16 @@
                         if (should_log(LogLevel::Debug)) {
                             log(LogLevel::Debug, "discovery",
                                 "subscriptions changed for " + peer.name + " " + sock_str(source));
+                        }
+                    }
+
+                    // Mark announce as heard (may trigger connection if data was already confirmed)
+                    // Name and subscriptions are updated first so join_info carries complete data
+                    if (!peer.announce_heard) {
+                        peer.announce_heard = true;
+                        if (peer.handshake == HandshakeState::CONFIRMED) {
+                            fire_join = true;
+                            join_info = peer;
                         }
                     }
 
@@ -484,6 +486,25 @@
                 return &it->second;
             }
             return nullptr;
+        }
+
+        void Discovery::clear_peers() {
+            std::vector<PeerInfo> connected;
+            {
+                const std::lock_guard<std::mutex> lock(peers_mutex);
+                for (const auto& entry : peers) {
+                    if (entry.second.announce_heard && entry.second.handshake == HandshakeState::CONFIRMED) {
+                        connected.push_back(entry.second);
+                    }
+                }
+                peers.clear();
+            }
+            // Fire leave callbacks outside the lock
+            if (leave_callback) {
+                for (const auto& peer : connected) {
+                    leave_callback(peer);
+                }
+            }
         }
 
     }  // namespace network

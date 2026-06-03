@@ -33,10 +33,10 @@
 #include <utility>
 #include <vector>
 
-#include "../util/network/resolve.hpp"
-#include "../util/platform.hpp"
 #include <sstream>
 
+#include "../util/network/resolve.hpp"
+#include "../util/platform.hpp"
 #include "Discovery.hpp"
 #include "Fragmentation.hpp"
 #include "Log.hpp"
@@ -59,6 +59,20 @@ namespace {
         iov.iov_base = base;
         iov.iov_len  = len;
         return iov;
+#endif
+    }
+
+    /// Returns true for errors that indicate the socket itself is dead (interface down, fd invalid).
+    /// These warrant closing and reopening the sockets rather than silently dropping the packet.
+    bool is_fatal_socket_error(int err) {
+#ifdef _WIN32
+        return err == WSAENETDOWN || err == WSAENETRESET || err == WSAENETUNREACH || err == WSAENOTSOCK;
+#else
+        return err == ENETDOWN || err == ENETUNREACH || err == EBADF || err == ENOTSOCK
+#    ifdef ENONET
+               || err == ENONET  // Linux-specific: machine is not on the network
+#    endif
+            ;
 #endif
     }
 
@@ -144,7 +158,22 @@ namespace {
             routing.update_peer_subscriptions(peer.address, peer.subscriptions);
         });
 
-        // Resolve announce target
+        // Open sockets with the new configuration
+        open_sockets();
+
+        if (should_log(LogLevel::Info)) {
+            std::ostringstream msg;
+            msg << "reset name=" << config.name << " announce=" << config.announce_address << ':'
+                << config.announce_port << " mtu=" << config.mtu;
+            log(LogLevel::Info, "net", msg.str());
+        }
+    }
+
+    void NUClearNet::open_sockets() {
+        data_fd.reset();
+        announce_fd.reset();
+
+        // Re-resolve announce target (the interface address may have changed)
         announce_target = util::network::resolve(config.announce_address, config.announce_port);
 
         // Determine bind address
@@ -256,15 +285,8 @@ namespace {
             announce_fd.reset(fd);
         }
 
-        // Send initial announce
+        // Force an immediate announce on the new sockets
         last_announce = std::chrono::steady_clock::time_point{};
-
-        if (should_log(LogLevel::Info)) {
-            std::ostringstream msg;
-            msg << "reset name=" << config.name << " announce=" << config.announce_address << ':'
-                << config.announce_port << " mtu=" << config.mtu;
-            log(LogLevel::Info, "net", msg.str());
-        }
     }
 
     void NUClearNet::shutdown() {
@@ -282,6 +304,45 @@ namespace {
     }
 
     void NUClearNet::process() {
+        // Attempt to rebind if a previous send or receive indicated the sockets are dead.
+        // This recovers from interface changes (e.g., switching WiFi networks).
+        if (needs_rebind) {
+            if (should_log(LogLevel::Info)) {
+                log(LogLevel::Info, "net", "rebinding sockets after fatal socket error");
+            }
+            const auto retry_at = std::chrono::steady_clock::now() + ANNOUNCE_INTERVAL;
+
+            // Evict all peers: fires leave callbacks which clean up routing and reliability state
+            discovery->clear_peers();
+            deduplicators.clear();
+
+            // Discard stale fragmentation assemblies and reliability tracking from the old path
+            fragmentation = std::make_unique<Fragmentation>(
+                static_cast<uint16_t>(config.mtu - sizeof(DataPacket) + 1 - 40 - 8),
+                config.max_assembly_size,
+                config.peer_timeout);
+            reliability = std::make_unique<Reliability>();
+
+            try {
+                open_sockets();
+                needs_rebind = false;
+            }
+            catch (...) {
+                // Network not available yet; will retry on the next process() call
+            }
+
+            if (!needs_rebind && socket_change_callback) {
+                // Notify the caller so it can update IO event registrations for the new fds
+                socket_change_callback();
+            }
+
+            // Always schedule a follow-up call so we retry if the rebind failed
+            if (event_callback) {
+                event_callback(retry_at);
+            }
+            return;
+        }
+
         if (should_log(LogLevel::Trace)) {
             log(LogLevel::Trace, "net", "process begin");
         }
@@ -469,6 +530,10 @@ namespace {
             }
             log(LogLevel::Debug, "net", msg.str());
         }
+        // Immediately announce so peers learn the updated subscription list without waiting
+        // for the next periodic interval
+        announce();
+        last_announce = std::chrono::steady_clock::now();
     }
 
     void NUClearNet::add_subscription(uint64_t hash) {
@@ -476,6 +541,10 @@ namespace {
         if (should_log(LogLevel::Debug)) {
             log(LogLevel::Debug, "net", "add_subscription " + hash_hex(hash));
         }
+        // Immediately announce so peers learn the new subscription without waiting for
+        // the next periodic interval
+        announce();
+        last_announce = std::chrono::steady_clock::now();
     }
 
     void NUClearNet::set_packet_callback(PacketCallback cb) {
@@ -492,6 +561,10 @@ namespace {
 
     void NUClearNet::set_event_callback(EventCallback cb) {
         event_callback = std::move(cb);
+    }
+
+    void NUClearNet::set_socket_change_callback(SocketChangeCallback cb) {
+        socket_change_callback = std::move(cb);
     }
 
     std::vector<fd_t> NUClearNet::listen_fds() const {
@@ -527,6 +600,7 @@ namespace {
         // For the announce socket, MSG_DONTWAIT provides the same behavior on POSIX
         socklen_t source_len = 0;
         auto recv = [&]() {
+            source     = {};  // Clear stale bytes so different address families don't corrupt the assembly key
             source_len = sizeof(source.storage);
             return ::recvfrom(fd,
                               reinterpret_cast<char*>(buffer.data()),
@@ -537,13 +611,21 @@ namespace {
         };
 
         std::size_t datagrams = 0;
-        for (ssize_t received = recv(); received > 0; received = recv()) {
+        ssize_t received = recv();
+        while (received > 0) {
             ++datagrams;
             process_packet(source, buffer.data(), static_cast<std::size_t>(received));
+            received = recv();
         }
 
         if (should_log(LogLevel::Trace) && datagrams > 0) {
             log(LogLevel::Trace, "net", "read_socket fd=" + std::to_string(fd) + " datagrams=" + std::to_string(datagrams));
+        }
+
+        // A negative return that is not a normal non-blocking condition (EAGAIN/EWOULDBLOCK)
+        // means the socket itself has failed — schedule a rebind
+        if (received < 0 && is_fatal_socket_error(network_errno)) {
+            needs_rebind = true;
         }
     }
 
@@ -752,9 +834,13 @@ namespace {
 #endif
 
 #ifdef _WIN32
-        NUClear::sendmsg(fd, &msg, 0);
+        if (NUClear::sendmsg(fd, &msg, 0) < 0 && is_fatal_socket_error(network_errno)) {
+            needs_rebind = true;
+        }
 #else
-        ::sendmsg(fd, &msg, 0);
+        if (::sendmsg(fd, &msg, 0) < 0 && is_fatal_socket_error(network_errno)) {
+            needs_rebind = true;
+        }
 #endif
     }
 
