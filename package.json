@@ -9,7 +9,8 @@
   },
   "scripts": {
     "build": "node-gyp configure && node-gyp build",
-    "test": "node tests/test.js"
+    "test": "node tests/test.js",
+    "test:linux": "docker build -t nuclearnet.js-test . && docker run --rm nuclearnet.js-test"
   },
   "repository": {
     "type": "git",

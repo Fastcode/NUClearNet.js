@@ -3,6 +3,10 @@ const assert = require('uvu/assert');
 
 const { NUClearNet } = require('..');
 
+// GitHub Actions macOS runners do not support IPv4 multicast loopback used by these tests.
+const multicastTestsSupported = !(process.platform === 'darwin' && process.env.CI);
+const netTest = multicastTestsSupported ? test : test.skip;
+
 function randomId() {
   return String(Math.random() * 100000000).slice(0, 7);
 }
@@ -131,7 +135,7 @@ test('NUClearNet.send() throws if used before connect()', () => {
   net.destroy();
 });
 
-test('NUClearNet emits join events', async () => {
+netTest('NUClearNet emits join events', async () => {
   // Test set up:
   //   - Create N network instances and connect all of them
   //   - Each time one peer joins another, check that they've all joined each other
@@ -179,7 +183,7 @@ test('NUClearNet emits join events', async () => {
   );
 });
 
-test('NUClearNet emits leave events', async () => {
+netTest('NUClearNet emits leave events', async () => {
   // Test set up:
   //   - Create two network instances (A and B) and connect them
   //   - Wait for B to join A, then disconnect B to trigger the `nuclear_leave` event on A
@@ -217,7 +221,7 @@ test('NUClearNet emits leave events', async () => {
   );
 });
 
-test('NUClearNet can send and receive reliable targeted messages', async () => {
+netTest('NUClearNet can send and receive reliable targeted messages', async () => {
   // Test set up:
   //   - Create one sender and N-1 receiver network instances and connect them
   //   - Wait for receivers to join the sender, and send each receiver a unique payload
@@ -296,7 +300,7 @@ test('NUClearNet can send and receive reliable targeted messages', async () => {
   );
 });
 
-test('NUClearNet can send and receive unreliable targeted messages', async () => {
+netTest('NUClearNet can send and receive unreliable targeted messages', async () => {
   // Test set up:
   //   - Create one sender and N-1 receiver network instances and connect them
   //   - Wait for each receiver to join the sender, then start an interval to unreliably send the receiver a unique payload.
@@ -384,7 +388,7 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
   );
 });
 
-test('NUClearNet can send and receive reliable untargeted messages', async () => {
+netTest('NUClearNet can send and receive reliable untargeted messages', async () => {
   // Test set up:
   //   - Create one sender and N-1 receiver network instances and connect them
   //   - Wait for both all receivers to join the sender, then send the payload with `reliable` set, untargeted
@@ -469,7 +473,7 @@ test('NUClearNet can send and receive reliable untargeted messages', async () =>
   );
 });
 
-test('NUClearNet can send and receive unreliable untargeted messages', async () => {
+netTest('NUClearNet can send and receive unreliable untargeted messages', async () => {
   // Test set up:
   //   - Create one sender and N-1 receiver network instances and connect them
   //   - Wait for all receivers to join the sender, then start an interval to unreliably send the same payload, without a target.
@@ -561,7 +565,7 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
   );
 });
 
-test('NUClearNet only receives subscribed message types', async () => {
+netTest('NUClearNet only receives subscribed message types', async () => {
   await asyncTest(
     (done, fail) => {
       const [peerA, peerB] = createPeers(2);

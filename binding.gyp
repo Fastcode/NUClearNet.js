@@ -86,7 +86,12 @@
                 ],
                 [
                     'OS=="win"', {
-                        'defines': [ '_HAS_EXCEPTIONS=1' ]
+                        'defines': [ '_HAS_EXCEPTIONS=1' ],
+                        'libraries': [
+                            'ws2_32.lib',
+                            'mswsock.lib',
+                            'iphlpapi.lib'
+                        ]
                     }
                 ]
             ]

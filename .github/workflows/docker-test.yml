@@ -1,0 +1,16 @@
+name: Docker Linux test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and test in Docker
+        run: docker build -t nuclearnet.js-test .
