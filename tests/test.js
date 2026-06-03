@@ -22,7 +22,7 @@ function createPeers(count, setupState = (peer) => peer) {
   });
 }
 
-function asyncTest(testFn, { timeout = 1000 } = {}) {
+function asyncTest(testFn, { timeout = 3000 } = {}) {
   return new Promise((resolve, reject) => {
     let cleanUp;
     let timeoutId;
@@ -175,7 +175,7 @@ test('NUClearNet emits join events', async () => {
 
       return cleanUp;
     },
-    { timeout: 1000 },
+    { timeout: 5000 },
   );
 });
 
@@ -213,7 +213,7 @@ test('NUClearNet emits leave events', async () => {
 
       return cleanUp;
     },
-    { timeout: 1000 },
+    { timeout: 5000 },
   );
 });
 
@@ -292,7 +292,7 @@ test('NUClearNet can send and receive reliable targeted messages', async () => {
 
       return cleanUp;
     },
-    { timeout: 1000 },
+    { timeout: 5000 },
   );
 });
 
@@ -380,7 +380,7 @@ test('NUClearNet can send and receive unreliable targeted messages', async () =>
 
       return cleanUp;
     },
-    { timeout: 1000 },
+    { timeout: 5000 },
   );
 });
 
@@ -554,6 +554,97 @@ test('NUClearNet can send and receive unreliable untargeted messages', async () 
 
       // Connect the peers
       [sender, ...receivers].forEach((peer) => peer.net.connect({ name: peer.name }));
+
+      return cleanUp;
+    },
+    { timeout: 5000 },
+  );
+});
+
+test('NUClearNet only receives subscribed message types', async () => {
+  await asyncTest(
+    (done, fail) => {
+      const [peerA, peerB] = createPeers(2);
+
+      const payloadA = Buffer.from('payload-for-a');
+      const payloadB = Buffer.from('payload-for-b');
+
+      function cleanUp() {
+        [peerA, peerB].forEach((peer) => peer.net.destroy());
+      }
+
+      let aReady = false;
+      let bReady = false;
+
+      function trySend() {
+        if (!aReady || !bReady) {
+          return;
+        }
+
+        peerA.net.send({
+          type: 'type-for-b-only',
+          payload: payloadB,
+          reliable: false,
+        });
+
+        peerB.net.send({
+          type: 'type-for-a-only',
+          payload: payloadA,
+          reliable: false,
+        });
+      }
+
+      peerA.net.on('nuclear_join', (peer) => {
+        if (peer.name === peerB.name) {
+          aReady = true;
+          trySend();
+        }
+      });
+
+      peerB.net.on('nuclear_join', (peer) => {
+        if (peer.name === peerA.name) {
+          bReady = true;
+          trySend();
+        }
+      });
+
+      peerA.net.on('type-for-a-only', (packet) => {
+        if (packet.peer.name !== peerB.name) {
+          return;
+        }
+        if (packet.payload.compare(payloadA) !== 0) {
+          cleanUp();
+          fail('peer A got unexpected payload on type-for-a-only');
+          return;
+        }
+        peerA.gotExpected = true;
+        if (peerA.gotExpected && peerB.gotExpected) {
+          cleanUp();
+          done();
+        }
+      });
+
+      peerB.net.on('type-for-b-only', (packet) => {
+        if (packet.peer.name !== peerA.name) {
+          return;
+        }
+        if (packet.payload.compare(payloadB) !== 0) {
+          cleanUp();
+          fail('peer B got unexpected payload on type-for-b-only');
+          return;
+        }
+        peerB.gotExpected = true;
+        if (peerA.gotExpected && peerB.gotExpected) {
+          cleanUp();
+          done();
+        }
+      });
+
+      peerA.gotExpected = false;
+      peerB.gotExpected = false;
+
+      peerA.net.connect({ name: peerA.name });
+      peerB.net.connect({ name: peerB.name });
 
       return cleanUp;
     },

@@ -38,35 +38,23 @@ class NUClearNet extends EventEmitter {
     this.on('newListener', (event) => {
       this.assertNotDestroyed();
 
-      if (
-        event !== 'nuclear_join' &&
-        event !== 'nuclear_leave' &&
-        event !== 'nuclear_packet' &&
-        event !== 'newListener' &&
-        event !== 'removeListener' &&
-        event !== 'disconnect' &&
-        this.listenerCount(event) === 0
-      ) {
+      if (this._isTypedPacketEvent(event) && this.listenerCount(event) === 0) {
         const hash = this._net.hash(event);
         this._callbackMap[hash] = event;
+        if (this._active) {
+          this._net.addSubscription(hash);
+        }
       }
     });
 
     // We are no longer listening to this type
     this.on('removeListener', (event) => {
-      // If we are no longer listening to this type
-      if (
-        event !== 'nuclear_join' &&
-        event !== 'nuclear_leave' &&
-        event !== 'nuclear_packet' &&
-        event !== 'newListener' &&
-        event !== 'removeListener' &&
-        event !== 'disconnect' &&
-        this.listenerCount(event) === 0
-      ) {
-        // Get our hash and delete it
+      if (this._isTypedPacketEvent(event) && this.listenerCount(event) === 0) {
         const hash = this._net.hash(event);
         delete this._callbackMap[hash];
+        if (this._active) {
+          this._syncSubscriptions();
+        }
       }
     });
 
@@ -147,6 +135,22 @@ class NUClearNet extends EventEmitter {
     }, duration);
   }
 
+  _isTypedPacketEvent(event) {
+    return (
+      event !== 'nuclear_join' &&
+      event !== 'nuclear_leave' &&
+      event !== 'nuclear_packet' &&
+      event !== 'newListener' &&
+      event !== 'removeListener' &&
+      event !== 'disconnect'
+    );
+  }
+
+  _syncSubscriptions() {
+    const hashes = Object.values(this._callbackMap).map((eventName) => this._net.hash(eventName));
+    this._net.setSubscriptions(hashes);
+  }
+
   hash(data) {
     this.assertNotDestroyed();
     return this._net.hash(data);
@@ -163,6 +167,10 @@ class NUClearNet extends EventEmitter {
     const address = options.address === undefined ? '239.226.152.162' : options.address;
     const port = options.port === undefined ? 7447 : options.port;
     const mtu = options.mtu === undefined ? 1500 : options.mtu;
+
+    if (Object.keys(this._callbackMap).length > 0) {
+      this._syncSubscriptions();
+    }
 
     // Connect to the network
     this._net.reset(name, address, port, mtu);

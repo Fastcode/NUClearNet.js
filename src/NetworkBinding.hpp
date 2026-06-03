@@ -20,7 +20,7 @@
 
 #include <napi.h>
 
-#include "nuclear/src/extension/network/NUClearNetwork.hpp"
+#include "nuclear/src/nuclearnet/NUClearNet.hpp"
 
 namespace NUClear {
 
@@ -38,8 +38,10 @@ public:
     void Process(const Napi::CallbackInfo& info);
     void Shutdown(const Napi::CallbackInfo& info);
     void Destroy(const Napi::CallbackInfo& info);
+    void AddSubscription(const Napi::CallbackInfo& info);
+    void SetSubscriptions(const Napi::CallbackInfo& info);
 
-    extension::network::NUClearNetwork net;
+    network::NUClearNet net;
     bool destroyed = false;
     Napi::ThreadSafeFunction on_packet;
     Napi::ThreadSafeFunction on_join;

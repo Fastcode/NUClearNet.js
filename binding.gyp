@@ -6,17 +6,21 @@
                 'src/binding.cpp',
                 'src/NetworkBinding.cpp',
                 'src/NetworkListener.cpp',
-                'src/nuclear/src/extension/network/NUClearNetwork.cpp',
-                'src/nuclear/src/util/platform.cpp',
-                'src/nuclear/src/util/network/get_interfaces.cpp',
-                'src/nuclear/src/util/network/if_number_from_address.cpp',
+                'src/nuclear/src/nuclearnet/Discovery.cpp',
+                'src/nuclear/src/nuclearnet/Fragmentation.cpp',
+                'src/nuclear/src/nuclearnet/NUClearNet.cpp',
+                'src/nuclear/src/nuclearnet/PacketDeduplicator.cpp',
+                'src/nuclear/src/nuclearnet/RTTEstimator.cpp',
+                'src/nuclear/src/nuclearnet/Reliability.cpp',
+                'src/nuclear/src/nuclearnet/Routing.cpp',
                 'src/nuclear/src/util/network/resolve.cpp',
+                'src/nuclear/src/util/platform.cpp',
                 'src/nuclear/src/util/serialise/xxhash.cpp'
             ],
             'cflags': [],
             'include_dirs': [
                 '<!@(node -p "require(\'node-addon-api\').include")',
-                'src/nuclear/src/include'
+                'src/nuclear/src'
             ],
             "defines": [
                 # Restrict NAPI to v6 (to support Node v10)
