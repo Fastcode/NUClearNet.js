@@ -1,0 +1,116 @@
+name: Linting
+
+# Controls when the action will run.
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Ensure that only one instance of the workflow is run at a time for each branch/tag.
+# Jobs currently running on the branch/tag will be cancelled when new commits are pushed.
+# See https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions#concurrency.
+concurrency:
+  # `github.workflow` is the workflow name, `github.ref` is the current branch/tag identifier
+  group: ${{ format('{0}:{1}', github.workflow, github.ref) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  linux-clang-tidy:
+    name: Linux Clang-Tidy
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install clang-tidy
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" | sudo tee /etc/apt/sources.list.d/llvm-19.list
+          echo "deb-src http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" | sudo tee -a /etc/apt/sources.list.d/llvm-19.list
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy-19
+
+      # Download and install cmake
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: 3.27.1
+          ninjaVersion: 1.11.1
+
+      # Download and setup ccache
+      - name: Setup CCache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ github.job }}
+          max-size: 100M
+
+      # Install ctcache
+      - name: Install ctcache
+        shell: bash
+        run: |
+          CTCACHE_REF=debfea68152c5221d8f409cbef85dc5d0f98071d
+          curl --location https://raw.githubusercontent.com/matus-chochlik/ctcache/${CTCACHE_REF}/clang-tidy-cache | sudo tee /usr/local/bin/clang-tidy-cache > /dev/null
+
+          echo #!/bin/bash | sudo tee /usr/local/bin/clang-tidy > /dev/null
+          echo /usr/local/bin/clang-tidy-cache '"${CTCACHE_CLANG_TIDY}"' '"$@"' | sudo tee -a /usr/local/bin/clang-tidy > /dev/null
+
+          sudo chmod +x /usr/local/bin/clang-tidy-cache /usr/local/bin/clang-tidy
+
+          mkdir -p ${{ github.workspace }}/.ctcache
+
+          echo CTCACHE_CLANG_TIDY='/usr/bin/clang-tidy-19' >> "$GITHUB_ENV"
+          echo CTCACHE_LOCAL=1 >> "$GITHUB_ENV"
+          echo CTCACHE_SAVE_OUTPUT=1 >> "$GITHUB_ENV"
+          echo CTCACHE_DIR='${{github.workspace}}/.ctcache' >> "$GITHUB_ENV"
+          echo "CTCACHE_NOW=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")" >> $GITHUB_ENV
+
+      - name: Setup caching for ctcache
+        uses: actions/cache@v4
+        with:
+          key: ctcache-${{ github.workflow }}-${{ github.job }}-${{ env.CTCACHE_NOW }}
+          path: ${{ env.CTCACHE_DIR }}
+          restore-keys: ctcache-${{ github.workflow }}-${{ github.job }}-
+          save-always: true
+
+      - name: Configure CMake
+        run: |
+          cmake -E make_directory build
+          cmake -S . -B build \
+            -GNinja \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DBUILD_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCI_BUILD=ON \
+            -DENABLE_CLANG_TIDY=ON
+
+      - name: Build
+        timeout-minutes: 30
+        run: cmake --build build --config Debug --parallel 2
+
+      - name: CCache Stats
+        run: ccache --show-stats
+
+      - name: CTCache Stats
+        run: clang-tidy-cache --show-stats
+
+  markdown-format:
+    name: Markdown Formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Check markdown formatting
+        run: uv run mdformat --check docs/
