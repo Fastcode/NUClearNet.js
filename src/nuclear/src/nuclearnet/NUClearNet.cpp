@@ -208,6 +208,14 @@ namespace {
             ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 #endif
 
+            sock_t bound_addr{};
+            socklen_t bound_len = sizeof(bound_addr.storage);
+            if (::getsockname(fd, &bound_addr.sock, &bound_len) != 0) {
+                ::close(fd);
+                throw std::system_error(network_errno, std::system_category(), "Failed to get data socket address");
+            }
+            own_data_address = bound_addr;
+
             data_fd.reset(fd);
         }
 
@@ -244,6 +252,10 @@ namespace {
                         ::close(fd);
                         throw std::system_error(network_errno, std::system_category(), "Failed to join multicast group");
                     }
+
+                    // Allow multicast loopback for single-host development
+                    int loop = 1;
+                    ::setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, reinterpret_cast<const char*>(&loop), sizeof(loop));
                 }
                 else {
                     ipv6_mreq mreq{};
@@ -283,6 +295,7 @@ namespace {
             auto leave = Discovery::build_leave_packet();
             send_buf(data_fd, announce_target, leave.data(), leave.size());
         }
+        own_data_address = {};
         data_fd.reset();
         announce_fd.reset();
     }
@@ -562,6 +575,22 @@ namespace {
         return fds;
     }
 
+    bool NUClearNet::is_own_data_endpoint(const sock_t& source) const {
+        if (own_data_address.sock.sa_family == AF_UNSPEC) {
+            return false;
+        }
+        if (source.sock.sa_family != own_data_address.sock.sa_family) {
+            return false;
+        }
+        if (source.sock.sa_family == AF_INET) {
+            return source.ipv4.sin_port == own_data_address.ipv4.sin_port;
+        }
+        if (source.sock.sa_family == AF_INET6) {
+            return source.ipv6.sin6_port == own_data_address.ipv6.sin6_port;
+        }
+        return false;
+    }
+
     void NUClearNet::announce() {
         if (!data_fd.valid()) {
             return;
@@ -638,6 +667,14 @@ namespace {
     }
 
     void NUClearNet::process_announce_packet(const sock_t& source, const uint8_t* data, std::size_t length) {
+        // Ignore our own announces (multicast/broadcast loopback) without blocking other nodes on 127.0.0.1
+        if (is_own_data_endpoint(source)) {
+            if (should_log(LogLevel::Debug)) {
+                log(LogLevel::Debug, "net", "ignoring self announce from " + sock_str(source));
+            }
+            return;
+        }
+
         auto announce_result = discovery->process_announce(source, data, length);
 
         if (announce_result.is_new) {
