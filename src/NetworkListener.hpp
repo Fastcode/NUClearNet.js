@@ -34,6 +34,7 @@ public:
     void OnError(const Napi::Error& e) override;
 
     NetworkBinding* binding;
+    uint32_t generation;
 
 #ifdef _WIN32
     std::vector<WSAEVENT> events;

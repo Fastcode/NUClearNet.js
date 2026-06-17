@@ -18,11 +18,15 @@
 #ifndef NETWORKBINDING_H
 #define NETWORKBINDING_H
 
+#include <atomic>
+
 #include <napi.h>
 
 #include "nuclear/src/nuclearnet/NUClearNet.hpp"
 
 namespace NUClear {
+
+class NetworkListener;
 
 class NetworkBinding : public Napi::ObjectWrap<NetworkBinding> {
 public:
@@ -42,15 +46,21 @@ public:
     void SetSubscriptions(const Napi::CallbackInfo& info);
     void SetLogLevel(const Napi::CallbackInfo& info);
 
+    void stop_listener();
+    void start_listener(Napi::Env env);
+    void request_listener_restart();
+
     network::NUClearNet net;
     bool destroyed = false;
+    std::atomic<uint32_t> listener_generation{0};
     Napi::ThreadSafeFunction on_packet;
     Napi::ThreadSafeFunction on_join;
     Napi::ThreadSafeFunction on_leave;
     Napi::ThreadSafeFunction on_wait;
+    Napi::ThreadSafeFunction listener_restart;
 
 #ifdef _WIN32
-    WSAEVENT listenerNotifier;
+    WSAEVENT listener_notifier = WSA_INVALID_EVENT;
 #endif
 
     static void Init(Napi::Env env, Napi::Object exports);

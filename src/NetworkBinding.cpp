@@ -133,7 +133,41 @@ network::LogLevel log_level_from_value(Napi::Env env, const Napi::Value& arg) {
 
 }  // namespace
 
-NetworkBinding::NetworkBinding(const Napi::CallbackInfo& info) : Napi::ObjectWrap<NetworkBinding>(info) {}
+NetworkBinding::NetworkBinding(const Napi::CallbackInfo& info) : Napi::ObjectWrap<NetworkBinding>(info) {
+    this->net.set_socket_change_callback([this]() { this->request_listener_restart(); });
+}
+
+void NetworkBinding::stop_listener() {
+    ++this->listener_generation;
+
+#ifdef _WIN32
+    if (this->listener_notifier != WSA_INVALID_EVENT) {
+        WSASetEvent(this->listener_notifier);
+    }
+#endif
+}
+
+void NetworkBinding::start_listener(Napi::Env env) {
+    this->stop_listener();
+
+    auto* asyncWorker = new NetworkListener(env, this);
+
+#ifdef _WIN32
+    this->listener_notifier = asyncWorker->notifier;
+#endif
+
+    asyncWorker->Queue();
+}
+
+void NetworkBinding::request_listener_restart() {
+    if (this->destroyed) {
+        return;
+    }
+
+    if (this->listener_restart) {
+        this->listener_restart.NonBlockingCall([this](Napi::Env env, Napi::Function) { this->start_listener(env); });
+    }
+}
 
 Napi::Value NetworkBinding::Hash(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -340,13 +374,18 @@ void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
     try {
         this->net.reset(config);
 
-        auto asyncWorker = new NetworkListener(env, this);
+        if (!this->listener_restart) {
+            this->listener_restart =
+                Napi::ThreadSafeFunction::New(env,
+                                              Napi::Function::New(env, [this](const Napi::CallbackInfo& info) {
+                                                  this->start_listener(info.Env());
+                                              }),
+                                              "ListenerRestart",
+                                              0,
+                                              1);
+        }
 
-#ifdef _WIN32
-        this->listenerNotifier = asyncWorker->notifier;
-#endif
-
-        asyncWorker->Queue();
+        this->start_listener(env);
     }
     catch (const std::exception& ex) {
         if (network::should_log(network::LogLevel::Error)) {
@@ -374,6 +413,7 @@ void NetworkBinding::Shutdown(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     try {
+        this->stop_listener();
         this->net.shutdown();
     }
     catch (const std::exception& ex) {
@@ -426,10 +466,9 @@ void NetworkBinding::SetSubscriptions(const Napi::CallbackInfo& info) {
 void NetworkBinding::Destroy(const Napi::CallbackInfo& info) {
     this->destroyed = true;
 
-#ifdef _WIN32
-    WSASetEvent(this->listenerNotifier);
-#endif
+    this->stop_listener();
 
+    this->net.set_socket_change_callback([]() {});
     this->net.set_packet_callback(
         [](const sock_t&, const std::string&, uint64_t, bool, std::vector<uint8_t>&&) {});
     this->net.set_join_callback([](const PeerInfo&) {});
@@ -440,6 +479,9 @@ void NetworkBinding::Destroy(const Napi::CallbackInfo& info) {
     on_join.Release();
     on_leave.Release();
     on_wait.Release();
+    if (this->listener_restart) {
+        this->listener_restart.Release();
+    }
 }
 
 void NetworkBinding::Init(Napi::Env env, Napi::Object exports) {
