@@ -30,8 +30,8 @@
 #include "../PowerPlant.hpp"
 #include "../Reactor.hpp"
 #include "../message/NetworkConfiguration.hpp"
+#include "../nuclearnet/NUClearNet.hpp"
 #include "../util/get_hostname.hpp"
-#include "network/NUClearNetwork.hpp"
 
 namespace NUClear {
 namespace extension {
@@ -40,10 +40,16 @@ namespace extension {
 
     public:
         explicit NetworkController(std::unique_ptr<NUClear::Environment> environment);
+        /// Removes our log handler so the NUClearNet library can't call back into a destroyed reactor
+        ~NetworkController() override;
+        NetworkController(const NetworkController&)            = delete;
+        NetworkController(NetworkController&&)                 = delete;
+        NetworkController& operator=(const NetworkController&) = delete;
+        NetworkController& operator=(NetworkController&&)      = delete;
 
     private:
-        /// Our NUClearNetwork object that handles the networking
-        network::NUClearNetwork network;
+        /// Our NUClearNet object that handles the networking
+        network::NUClearNet net;
 
         /// The reaction that handles timed events from the network
         ReactionHandle process_handle;

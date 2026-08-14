@@ -20,11 +20,19 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <array>
+#include <atomic>
 #include <catch2/catch_test_macros.hpp>
-#include <nuclear>
+#include <catch2/catch_tostring.hpp>
+#include <chrono>
+#include <map>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <utility>
 
+#include "nuclear"
 #include "test_util/TestBase.hpp"
-#include "test_util/TimeUnit.hpp"
 #include "test_util/common.hpp"
 
 namespace Catch {
@@ -51,7 +59,7 @@ public:
     static constexpr int n_loops = 10000;
 
     explicit TestReactor(std::unique_ptr<NUClear::Environment> environment)
-        : TestBase(std::move(environment), false, std::chrono::seconds(2)) {
+        : TestBase(std::move(environment), false, test_util::TimeUnit(200)) {
 
         /*
          * Run idle on the default pool, and a task on the main pool.

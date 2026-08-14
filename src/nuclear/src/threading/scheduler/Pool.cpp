@@ -22,13 +22,21 @@
 #include "Pool.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <thread>
+#include <utility>
+#include <vector>
 
 #include "../../dsl/word/MainThread.hpp"
 #include "../../dsl/word/Pool.hpp"
+#include "../../id.hpp"
 #include "../../message/ReactionStatistics.hpp"
+#include "../../threading/Reaction.hpp"
 #include "../../util/Inline.hpp"
 #include "../ReactionTask.hpp"
-#include "CombinedLock.hpp"
 #include "CountingLock.hpp"
 #include "Scheduler.hpp"
 
@@ -179,9 +187,9 @@ namespace threading {
                 }
             }
             catch (const ShutdownThreadException&) {
-                // This throw is here for when the pool is stopped
+                Pool::current_pool = nullptr;
+                return;
             }
-            Pool::current_pool = nullptr;
         }
 
         Pool::Task Pool::get_task() {
@@ -274,7 +282,7 @@ namespace threading {
 
         // Initialise the current pool to nullptr if it is not already
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-        ATTRIBUTE_TLS Pool* Pool::current_pool = nullptr;
+        thread_local Pool* Pool::current_pool = nullptr;
 
     }  // namespace scheduler
 }  // namespace threading

@@ -13,7 +13,7 @@
 *.a
 
 # Build & CMake files
-build/
+build*/
 CMakeCache.txt
 CMakeFiles
 Makefile
@@ -27,3 +27,8 @@ tags
 docs/doxygen
 docs/doxygen_sqlite3.db
 *.sublime-workspace
+.DS_Store
+site/
+.venv/
+
+site/

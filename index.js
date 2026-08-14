@@ -19,9 +19,13 @@
 
 const { NetworkBinding } = require('bindings')('nuclearnet');
 const { EventEmitter } = require('events');
+const { LEVELS, parseLogLevel, levelName, shouldLog } = require('./lib/log');
 
 class NUClearNet extends EventEmitter {
-  constructor() {
+  /**
+   * @param {{ debug?: boolean | string }} [options]
+   */
+  constructor(options = {}) {
     super();
 
     // Create a new network object
@@ -30,6 +34,7 @@ class NUClearNet extends EventEmitter {
     this._active = false;
     this._waiting = 0;
     this._destroyed = false;
+    this._constructorDebug = options.debug;
 
     // Stores the connect() options
     this.options = {};
@@ -38,35 +43,25 @@ class NUClearNet extends EventEmitter {
     this.on('newListener', (event) => {
       this.assertNotDestroyed();
 
-      if (
-        event !== 'nuclear_join' &&
-        event !== 'nuclear_leave' &&
-        event !== 'nuclear_packet' &&
-        event !== 'newListener' &&
-        event !== 'removeListener' &&
-        event !== 'disconnect' &&
-        this.listenerCount(event) === 0
-      ) {
+      if (this._isTypedPacketEvent(event) && this.listenerCount(event) === 0) {
         const hash = this._net.hash(event);
         this._callbackMap[hash] = event;
+        this._log(LEVELS.debug, 'subscribe listener', { type: event });
+        if (this._active) {
+          this._net.addSubscription(hash);
+        }
       }
     });
 
     // We are no longer listening to this type
     this.on('removeListener', (event) => {
-      // If we are no longer listening to this type
-      if (
-        event !== 'nuclear_join' &&
-        event !== 'nuclear_leave' &&
-        event !== 'nuclear_packet' &&
-        event !== 'newListener' &&
-        event !== 'removeListener' &&
-        event !== 'disconnect' &&
-        this.listenerCount(event) === 0
-      ) {
-        // Get our hash and delete it
+      if (this._isTypedPacketEvent(event) && this.listenerCount(event) === 0) {
         const hash = this._net.hash(event);
         delete this._callbackMap[hash];
+        this._log(LEVELS.debug, 'unsubscribe listener', { type: event });
+        if (this._active) {
+          this._syncSubscriptions();
+        }
       }
     });
 
@@ -75,10 +70,65 @@ class NUClearNet extends EventEmitter {
     this._net.onJoin(this._onJoin.bind(this));
     this._net.onLeave(this._onLeave.bind(this));
     this._net.onWait(this._onWait.bind(this));
+    this._net.onLog(this._onNativeLog.bind(this));
+
+    this._applyLogLevel(parseLogLevel(this._constructorDebug, process.env.NUCLEARNET_DEBUG));
+  }
+
+  _applyLogLevel(level) {
+    this._logLevel = level;
+    this._net.setLogLevel(level);
+  }
+
+  /**
+   * A log message from the native NUClearNet library.
+   * The native side has already filtered by level, but check again so a level change that
+   * races with a queued message can't slip through.
+   *
+   * @param {number} level
+   * @param {string} component
+   * @param {string} message
+   */
+  _onNativeLog(level, component, message) {
+    this._log(level, message, { component: component });
+  }
+
+  /**
+   * @param {number} level
+   * @param {string} message
+   * @param {object} [fields]
+   */
+  _log(level, message, fields) {
+    if (!shouldLog(this._logLevel, level)) {
+      return;
+    }
+    if (fields !== undefined) {
+      console.error('[NUClearNet.js]', levelName(level), message, fields);
+    } else {
+      console.error('[NUClearNet.js]', levelName(level), message);
+    }
+  }
+
+  /**
+   * @param {Buffer} hash
+   * @returns {string}
+   */
+  _hashHex(hash) {
+    return '0x' + hash.toString('hex');
   }
 
   _onPacket(name, address, port, reliable, hash, payload) {
     const eventName = this._callbackMap[hash];
+
+    this._log(LEVELS.debug, 'packet', {
+      peer: name,
+      address: address,
+      port: port,
+      type: eventName,
+      hash: this._hashHex(hash),
+      len: payload.length,
+      reliable: reliable,
+    });
 
     // Construct our packet
     const packet = {
@@ -103,6 +153,7 @@ class NUClearNet extends EventEmitter {
   }
 
   _onJoin(name, address, port) {
+    this._log(LEVELS.info, 'join', { name: name, address: address, port: port });
     this.emit('nuclear_join', {
       name: name,
       address: address,
@@ -111,6 +162,7 @@ class NUClearNet extends EventEmitter {
   }
 
   _onLeave(name, address, port) {
+    this._log(LEVELS.info, 'leave', { name: name, address: address, port: port });
     this.emit('nuclear_leave', {
       name: name,
       address: address,
@@ -119,6 +171,7 @@ class NUClearNet extends EventEmitter {
   }
 
   _onWait(duration) {
+    this._log(LEVELS.trace, 'wait', { ms: duration });
     ++this._waiting;
 
     setTimeout(() => {
@@ -128,11 +181,14 @@ class NUClearNet extends EventEmitter {
       if (this._active) {
         try {
           this._net.process();
-        } catch {
+        } catch (err) {
           // An error occurred during processing, disconnect.
           // This needs to check again if this is still active, as multiple
           // `_onWait` calls run concurrently, and only the first one to fail
           // should disconnect.
+          this._log(LEVELS.error, 'process failed, disconnecting', {
+            error: err instanceof Error ? err.message : String(err),
+          });
           if (this._active) {
             this.disconnect();
           }
@@ -147,6 +203,24 @@ class NUClearNet extends EventEmitter {
     }, duration);
   }
 
+  _isTypedPacketEvent(event) {
+    return (
+      event !== 'nuclear_join' &&
+      event !== 'nuclear_leave' &&
+      event !== 'nuclear_packet' &&
+      event !== 'newListener' &&
+      event !== 'removeListener' &&
+      event !== 'disconnect'
+    );
+  }
+
+  _syncSubscriptions() {
+    const eventNames = Object.values(this._callbackMap);
+    const hashes = eventNames.map((eventName) => this._net.hash(eventName));
+    this._log(LEVELS.info, 'sync subscriptions', { count: eventNames.length, types: eventNames });
+    this._net.setSubscriptions(hashes);
+  }
+
   hash(data) {
     this.assertNotDestroyed();
     return this._net.hash(data);
@@ -158,11 +232,20 @@ class NUClearNet extends EventEmitter {
     // Store the options
     this.options = options;
 
+    const debugOption = options.debug !== undefined ? options.debug : this._constructorDebug;
+    this._applyLogLevel(parseLogLevel(debugOption, process.env.NUCLEARNET_DEBUG));
+
     // Default some of the options
     const name = options.name;
     const address = options.address === undefined ? '239.226.152.162' : options.address;
     const port = options.port === undefined ? 7447 : options.port;
     const mtu = options.mtu === undefined ? 1500 : options.mtu;
+
+    this._log(LEVELS.info, 'connect', { name: name, address: address, port: port, mtu: mtu });
+
+    if (Object.keys(this._callbackMap).length > 0) {
+      this._syncSubscriptions();
+    }
 
     // Connect to the network
     this._net.reset(name, address, port, mtu);
@@ -177,6 +260,7 @@ class NUClearNet extends EventEmitter {
   disconnect() {
     this.assertNotDestroyed();
 
+    this._log(LEVELS.info, 'disconnect');
     this._active = false;
     this._net.shutdown();
 
@@ -189,6 +273,14 @@ class NUClearNet extends EventEmitter {
     if (!this._active) {
       throw new Error('The network is not currently connected');
     } else {
+      const typeLabel =
+        typeof options.type === 'string' ? options.type : this._hashHex(options.type);
+      this._log(LEVELS.debug, 'send', {
+        type: typeLabel,
+        target: options.target,
+        reliable: options.reliable !== undefined ? options.reliable : false,
+        len: options.payload.length,
+      });
       this._net.send(
         options.type,
         options.payload,
@@ -199,6 +291,7 @@ class NUClearNet extends EventEmitter {
   }
 
   destroy() {
+    this._log(LEVELS.info, 'destroy');
     if (this._active) {
       this.disconnect();
     }

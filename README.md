@@ -4,6 +4,14 @@
 
 Node.js module for interacting with the [NUClear](https://github.com/Fastcode/NUClear) network.
 
+## NUClearNet 2 (v2.0.0+)
+
+Version 2 uses the redesigned **NUClearNet** library from [NUClear PR #190](https://github.com/Fastcode/NUClear/pull/190) (wire protocol **0x03**). It is **not** compatible with 1.x clients or NUClear builds that still use the old `NUClearNetwork` stack (protocol 0x02). Upgrade Node clients and NUClear robots together.
+
+The vendored NUClear tree is updated via `git subtree` from the `houliston/nuclearnet-v2` branch (currently [NUClear@92711931](https://github.com/Fastcode/NUClear/commit/92711931)).
+
+Peer join events may arrive slightly later than in 1.x because connection requires both multicast announce and a unicast CONNECT handshake.
+
 ## Installation
 
 The package contains a native module, so you'll need a working C++ compiler on your system to install and build it.
@@ -55,6 +63,25 @@ net.on('packet_type_a', function (packet) {
 
 // Connect to the network using the peer name "My Name"
 net.connect({ name: 'My Name' });
+```
+
+## Debugging
+
+Logging is off by default. Enable tiered logs with `connect({ debug: ... })`, the constructor default, or the `NUCLEARNET_DEBUG` environment variable (`connect` wins when both are set).
+
+| Level | JavaScript | Native (stderr) |
+| ----- | ---------- | ----------------- |
+| `info` | connect, join, leave, subscriptions | reset, shutdown, peer timeouts |
+| `debug` | send, packets, listener subscribe/unsubscribe | handshake, announce/connect, send routing |
+| `trace` | process wait scheduling | `process()` ticks, socket reads |
+
+```js
+const net = new NUClearNet({ debug: 'info' });
+net.connect({ name: 'node-1', debug: 'debug' }); // overrides constructor for this session
+```
+
+```bash
+NUCLEARNET_DEBUG=info node your-app.js
 ```
 
 ## API

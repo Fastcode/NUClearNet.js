@@ -102,20 +102,10 @@ namespace dsl {
                 /// If the packet is valid (it contains data)
                 bool valid{false};
 
-                struct Target {
-                    Target() = default;
-                    Target(std::string address, const uint16_t& port) : address(std::move(address)), port(port) {}
-
-                    /// The address of the target
-                    std::string address;
-                    /// The port of the target
-                    uint16_t port{0};
-                };
-
                 /// The information about this packets destination
-                Target local;
+                util::network::sock_t local{};
                 /// The information about this packets source
-                Target remote;
+                util::network::sock_t remote{};
 
                 /// The data to be sent in the packet
                 std::vector<uint8_t> payload;
@@ -209,32 +199,20 @@ namespace dsl {
                     }
                 }
 
-                // Broadcast and multicast reuse address and port
-                if (options.type == ConnectOptions::Type::BROADCAST
-                    || options.type == ConnectOptions::Type::MULTICAST) {
-
-                    if (::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
-                        throw std::system_error(network_errno,
-                                                std::system_category(),
-                                                "Unable to reuse address on the socket");
-                    }
+                if (::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
+                    throw std::system_error(network_errno,
+                                            std::system_category(),
+                                            "Unable to reuse address on the socket");
+                }
 
 // If SO_REUSEPORT is available set it too
 #ifdef SO_REUSEPORT
-                    if (::setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
-                        throw std::system_error(network_errno,
-                                                std::system_category(),
-                                                "Unable to reuse port on the socket");
-                    }
-#endif
-
-                    // We enable SO_BROADCAST since sometimes we need to send broadcast packets
-                    if (::setsockopt(fd, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
-                        throw std::system_error(network_errno,
-                                                std::system_category(),
-                                                "Unable to set broadcast on the socket");
-                    }
+                if (::setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, reinterpret_cast<char*>(&yes), sizeof(yes)) < 0) {
+                    throw std::system_error(network_errno,
+                                            std::system_category(),
+                                            "Unable to reuse port on the socket");
                 }
+#endif
 
                 // Bind to the address
                 if (::bind(fd, &bind_address.sock, bind_address.size()) != 0) {
@@ -329,7 +307,7 @@ namespace dsl {
 
                 // Generate a reaction for the IO system that closes on death
                 const fd_t cfd = fd.release();
-                reaction->unbinders.push_back([cfd](const threading::Reaction&) { ::close(cfd); });
+                reaction->unbinders.emplace_back([cfd](const threading::Reaction&) { ::close(cfd); });
                 IO::bind<DSL>(reaction, cfd, IO::READ | IO::CLOSE);
 
                 // Return our handles and our bound port
@@ -367,7 +345,7 @@ namespace dsl {
                 mh.msg_iovlen     = 1;
 
                 // Receive our message
-                ssize_t received = recvmsg(event.fd, &mh, MSG_DONTWAIT);
+                const ssize_t received = recvmsg(event.fd, &mh, MSG_DONTWAIT);
                 if (received < 0) {
                     return {};
                 }
@@ -427,12 +405,10 @@ namespace dsl {
                 RecvResult result = read<DSL>(task);
 
                 Packet p{};
-                p.valid       = result.valid;
-                p.payload     = std::move(result.payload);
-                auto local_s  = result.local.address();
-                auto remote_s = result.remote.address();
-                p.local       = Packet::Target{local_s.first, local_s.second};
-                p.remote      = Packet::Target{remote_s.first, remote_s.second};
+                p.valid   = result.valid;
+                p.payload = std::move(result.payload);
+                p.local   = result.local;
+                p.remote  = result.remote;
 
                 // Confirm that this packet was sent to one of our local addresses
                 for (const auto& iface : util::network::get_interfaces()) {
@@ -475,12 +451,10 @@ namespace dsl {
                     if (result.local.sock.sa_family == AF_INET) {
 
                         Packet p{};
-                        p.valid       = result.valid;
-                        p.payload     = std::move(result.payload);
-                        auto local_s  = result.local.address();
-                        auto remote_s = result.remote.address();
-                        p.local       = Packet::Target{local_s.first, local_s.second};
-                        p.remote      = Packet::Target{remote_s.first, remote_s.second};
+                        p.valid   = result.valid;
+                        p.payload = std::move(result.payload);
+                        p.local   = result.local;
+                        p.remote  = result.remote;
 
                         // 255.255.255.255 is always a valid broadcast address
                         if (result.local.ipv4.sin_addr.s_addr == htonl(INADDR_BROADCAST)) {
@@ -520,18 +494,16 @@ namespace dsl {
 
                     const auto& a = result.local;
                     const bool multicast =
-                        (a.sock.sa_family == AF_INET && (ntohl(a.ipv4.sin_addr.s_addr) & 0xF0000000) == 0xE0000000)
+                        (a.sock.sa_family == AF_INET && (ntohl(a.ipv4.sin_addr.s_addr) & 0xF0000000U) == 0xE0000000U)
                         || (a.sock.sa_family == AF_INET6 && a.ipv6.sin6_addr.s6_addr[0] == 0xFF);
 
                     // Only return multicast packets
                     if (multicast) {
                         Packet p{};
-                        p.valid       = result.valid;
-                        p.payload     = std::move(result.payload);
-                        auto local_s  = result.local.address();
-                        auto remote_s = result.remote.address();
-                        p.local       = Packet::Target{local_s.first, local_s.second};
-                        p.remote      = Packet::Target{remote_s.first, remote_s.second};
+                        p.valid   = result.valid;
+                        p.payload = std::move(result.payload);
+                        p.local   = result.local;
+                        p.remote  = result.remote;
                         return p;
                     }
 

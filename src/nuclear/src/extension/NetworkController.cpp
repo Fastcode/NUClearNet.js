@@ -22,7 +22,28 @@
 
 #include "NetworkController.hpp"
 
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "../LogLevel.hpp"
+#include "../Reactor.hpp"
+#include "../dsl/operation/Unbind.hpp"
+#include "../dsl/store/ThreadStore.hpp"
+#include "../dsl/word/Network.hpp"
+#include "../dsl/word/emit/Network.hpp"
+#include "../message/NetworkConfiguration.hpp"
 #include "../message/NetworkEvent.hpp"
+#include "../nuclearnet/Discovery.hpp"
+#include "../nuclearnet/Log.hpp"
+#include "../nuclearnet/NUClearNet.hpp"
+#include "../util/get_hostname.hpp"
 
 namespace NUClear {
 namespace extension {
@@ -33,23 +54,70 @@ namespace extension {
     using Unbind               = dsl::operation::Unbind<NetworkListen>;
     struct ProcessNetwork {};
 
+namespace {
+
+    /// Convert a NUClear log level into the equivalent level for the NUClearNet library
+    network::LogLevel to_network_level(const LogLevel& level) {
+        switch (level) {
+            case LogLevel::TRACE: return network::LogLevel::Trace;
+            case LogLevel::DEBUG: return network::LogLevel::Debug;
+            case LogLevel::INFO: return network::LogLevel::Info;
+            case LogLevel::WARN: return network::LogLevel::Warn;
+            case LogLevel::ERROR:
+            case LogLevel::FATAL: return network::LogLevel::Error;
+            default: return network::LogLevel::Off;
+        }
+    }
+
+    /// Convert a NUClearNet library log level into the equivalent NUClear log level
+    LogLevel from_network_level(const network::LogLevel& level) {
+        switch (level) {
+            case network::LogLevel::Trace: return LogLevel::TRACE;
+            case network::LogLevel::Debug: return LogLevel::DEBUG;
+            case network::LogLevel::Info: return LogLevel::INFO;
+            case network::LogLevel::Warn: return LogLevel::WARN;
+            case network::LogLevel::Error: return LogLevel::ERROR;
+            default: return LogLevel::UNKNOWN;
+        }
+    }
+
+}  // namespace
+
     NetworkController::NetworkController(std::unique_ptr<NUClear::Environment> environment)
         : Reactor(std::move(environment)) {
 
+        // Send the NUClearNet library's logs through the NUClear logging system rather than to stderr.
+        // Every path that logs (reset, send, process) is only ever called from within one of our reactions so we
+        // will always have reactor context when this fires.
+        network::NUClearNet::set_log_handler(
+            [this](const network::LogLevel& level, const char* component, const std::string& message) {
+                const std::string text = std::string("NUClearNet:") + component + " " + message;
+
+                // Dispatch on the level explicitly. Reactor::log(level, args...) resolves to the compile time
+                // overload with its default level, which would log everything at DEBUG with the level name
+                // stringified into the message.
+                switch (from_network_level(level)) {
+                    case LogLevel::TRACE: log<LogLevel::TRACE>(text); break;
+                    case LogLevel::DEBUG: log<LogLevel::DEBUG>(text); break;
+                    case LogLevel::INFO: log<LogLevel::INFO>(text); break;
+                    case LogLevel::WARN: log<LogLevel::WARN>(text); break;
+                    case LogLevel::ERROR: log<LogLevel::ERROR>(text); break;
+                    case LogLevel::FATAL: log<LogLevel::FATAL>(text); break;
+                    default: break;
+                }
+            });
+
         // Set our function callback
-        network.set_packet_callback([this](const network::NUClearNetwork::NetworkTarget& remote,
-                                           const uint64_t& hash,
-                                           const bool& reliable,
-                                           std::vector<uint8_t>&& payload) {
+        net.set_packet_callback([this](const network::NUClearNet::sock_t& source,
+                                       const std::string& peer_name,
+                                       uint64_t hash,
+                                       bool reliable,
+                                       std::vector<uint8_t>&& payload) {
             // Construct our NetworkSource information
-            dsl::word::NetworkSource src{remote.name, remote.target, reliable};
+            const dsl::word::NetworkSource src{peer_name, source, reliable};
 
             // Move the payload in as we are stealing it
-            std::vector<uint8_t> p(std::move(payload));
-
-            // Store in our thread local cache
-            dsl::store::ThreadStore<std::vector<uint8_t>>::value     = &p;
-            dsl::store::ThreadStore<dsl::word::NetworkSource>::value = &src;
+            const std::vector<uint8_t> p(std::move(payload));
 
             /* Mutex Scope */ {
                 // Lock our reaction mutex
@@ -60,36 +128,51 @@ namespace extension {
 
                 // Execute on our interested reactions
                 for (auto it = rs.first; it != rs.second; ++it) {
+                    // Store in our thread local cache
+                    dsl::store::ThreadStore<const std::vector<uint8_t>>::value     = &p;
+                    dsl::store::ThreadStore<const dsl::word::NetworkSource>::value = &src;
+
                     powerplant.submit(it->second->get_task());
                 }
-            }
 
-            // Clear our cache
-            dsl::store::ThreadStore<std::vector<uint8_t>>::value     = nullptr;
-            dsl::store::ThreadStore<dsl::word::NetworkSource>::value = nullptr;
+                // Clear our cache
+                dsl::store::ThreadStore<const std::vector<uint8_t>>::value     = nullptr;
+                dsl::store::ThreadStore<const dsl::word::NetworkSource>::value = nullptr;
+            }
         });
 
         // Set our join callback
-        network.set_join_callback([this](const network::NUClearNetwork::NetworkTarget& remote) {
+        net.set_join_callback([this](const network::PeerInfo& peer) {
             auto l     = std::make_unique<message::NetworkJoin>();
-            l->name    = remote.name;
-            l->address = remote.target;
+            l->name    = peer.name;
+            l->address = peer.address;
             emit(l);
         });
 
         // Set our leave callback
-        network.set_leave_callback([this](const network::NUClearNetwork::NetworkTarget& remote) {
+        net.set_leave_callback([this](const network::PeerInfo& peer) {
             auto l     = std::make_unique<message::NetworkLeave>();
-            l->name    = remote.name;
-            l->address = remote.target;
+            l->name    = peer.name;
+            l->address = peer.address;
             emit(l);
         });
 
         // Set our event timer callback
-        network.set_next_event_callback([this](std::chrono::steady_clock::time_point t) {
+        net.set_event_callback([this](std::chrono::steady_clock::time_point t) {
             const std::chrono::steady_clock::duration emit_offset = t - std::chrono::steady_clock::now();
             emit<Scope::DELAY>(std::make_unique<ProcessNetwork>(),
                                std::chrono::duration_cast<NUClear::clock::duration>(emit_offset));
+        });
+
+        // When the sockets are replaced after a rebind, update the IO event registrations
+        net.set_socket_change_callback([this] {
+            for (auto& h : listen_handles) {
+                h.unbind();
+            }
+            listen_handles.clear();
+            for (auto& fd : net.listen_fds()) {
+                listen_handles.push_back(on<IO>(fd, IO::READ).then("Packet", [this] { net.process(); }));
+            }
         });
 
         // Start listening for a new network type
@@ -99,6 +182,9 @@ namespace extension {
 
             // Insert our new reaction
             reactions.insert(std::make_pair(l.hash, l.reaction));
+
+            // Add subscription so peers know to send us this type
+            net.add_subscription(l.hash);
         });
 
         // Stop listening for a network type
@@ -107,22 +193,37 @@ namespace extension {
             const std::lock_guard<std::mutex> lock(reaction_mutex);
 
             // Find and delete this reaction
-            for (auto it = reactions.begin(); it != reactions.end(); ++it) {
-                if (it->second->id == unbind.id) {
-                    reactions.erase(it);
-                    break;
-                }
+            auto it = std::find_if(reactions.begin(), reactions.end(), [&](const auto& r) {
+                return r.second->id == unbind.id;
+            });
+            if (it != reactions.end()) {
+                reactions.erase(it);
             }
+
+            // Rebuild subscriptions from remaining reactions
+            std::set<uint64_t> subs;
+            for (const auto& r : reactions) {
+                subs.insert(r.first);
+            }
+            net.set_subscriptions(subs);
         });
 
-        on<Trigger<NetworkEmit>>().then("Network Emit", [this](const NetworkEmit& emit) {
-            network.send(emit.hash, emit.payload, emit.target, emit.reliable);
+        on<Trigger<NetworkEmit>>().then("Network Emit", [this](const NetworkEmit& e) {
+            net.send(e.hash, e.payload.data(), e.payload.size(), e.target, e.reliable);
         });
 
-        on<Shutdown>().then("Shutdown Network", [this] { network.shutdown(); });
+        on<Shutdown>().then("Shutdown Network", [this] { net.shutdown(); });
 
         // Configure the NUClearNetwork options
         on<Trigger<NetworkConfiguration>>().then([this](const NetworkConfiguration& config) {
+            // Pass the configured log level through to both this reactor and the NUClearNet library.
+            // Both are needed, the library level decides what it hands us and our level decides what gets emitted.
+            // UNKNOWN means the level wasn't configured, so leave our level alone and keep the library quiet.
+            if (config.log_level != LogLevel::UNKNOWN) {
+                this->log_level = config.log_level;
+            }
+            net.set_log_level(to_network_level(config.log_level));
+
             // Unbind our announce handle
             if (process_handle) {
                 process_handle.unbind();
@@ -136,19 +237,39 @@ namespace extension {
                 listen_handles.clear();
             }
 
-            // Name becomes hostname by default if not set
-            const std::string name = config.name.empty() ? util::get_hostname() : config.name;
+            // Build configuration
+            network::NetworkConfig net_config;
+            net_config.name             = config.name.empty() ? util::get_hostname() : config.name;
+            net_config.announce_address = config.announce_address;
+            net_config.announce_port    = config.announce_port;
+            net_config.bind_address     = config.bind_address;
+            net_config.mtu              = config.mtu;
+
+            // Collect current subscriptions
+            {
+                const std::lock_guard<std::mutex> lock(reaction_mutex);
+                std::set<uint64_t> subs;
+                for (const auto& r : reactions) {
+                    subs.insert(r.first);
+                }
+                net.set_subscriptions(subs);
+            }
 
             // Reset our network using this configuration
-            network.reset(name, config.announce_address, config.announce_port, config.bind_address, config.mtu);
+            net.reset(net_config);
 
             // Execution handle
-            process_handle = on<Trigger<ProcessNetwork>>().then("Network processing", [this] { network.process(); });
+            process_handle = on<Trigger<ProcessNetwork>>().then("Network processing", [this] { net.process(); });
 
-            for (auto& fd : network.listen_fds()) {
-                listen_handles.push_back(on<IO>(fd, IO::READ).then("Packet", [this] { network.process(); }));
+            for (auto& fd : net.listen_fds()) {
+                listen_handles.push_back(on<IO>(fd, IO::READ).then("Packet", [this] { net.process(); }));
             }
         });
+    }
+
+    NetworkController::~NetworkController() {
+        // Put the logs back on stderr so the library can't call back into us once we are gone
+        network::NUClearNet::set_log_handler(nullptr);
     }
 
 }  // namespace extension

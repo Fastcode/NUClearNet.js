@@ -22,11 +22,22 @@
 #include "Scheduler.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <set>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include "../../dsl/word/MainThread.hpp"
-#include "../../dsl/word/Pool.hpp"
+#include "../../id.hpp"
+#include "../../threading/Reaction.hpp"
+#include "../../threading/ReactionTask.hpp"
 #include "CombinedLock.hpp"
+#include "Group.hpp"
+#include "Lock.hpp"
+#include "Pool.hpp"
 
 namespace NUClear {
 namespace threading {
@@ -177,8 +188,23 @@ namespace threading {
                 return;
             }
 
-            // Get the pool and locks for the group group
-            auto pool       = get_pool(task->pool_descriptor);
+            // If we have run this task before, we know which pool it should be submitted to and cached it
+            // This avoids every single submit having to lock a mutex to find the pool
+            std::shared_ptr<Pool> pool;
+            if (task->parent) {
+                if (task->parent->scheduler_data) {
+                    pool = std::static_pointer_cast<Pool>(task->parent->scheduler_data);
+                }
+                else {
+                    pool                         = get_pool(task->pool_descriptor);
+                    task->parent->scheduler_data = pool;
+                }
+            }
+            else {
+                pool = get_pool(task->pool_descriptor);
+            }
+
+            // Get any locks that are required for this task
             auto group_lock = get_groups_lock(task->id, task->priority, pool, task->group_descriptors);
 
             // If this task should run immediately and not limited by the group lock

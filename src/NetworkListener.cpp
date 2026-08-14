@@ -21,7 +21,7 @@
 
 namespace NUClear {
 NetworkListener::NetworkListener(Napi::Env& env, NetworkBinding* binding)
-    : Napi::AsyncProgressWorker<char>(env), binding(binding) {
+    : Napi::AsyncProgressWorker<char>(env), binding(binding), generation(binding->listener_generation.load()) {
     std::vector<NUClear::fd_t> notifyfds = this->binding->net.listen_fds();
 
 #ifdef _WIN32
@@ -70,7 +70,7 @@ void NetworkListener::Execute(const Napi::AsyncProgressWorker<char>::ExecutionPr
     bool run = true;
 
     // The run loop: runs until we get an FD close (setting run to false) or the network binding is destroyed
-    while (run && !this->binding->destroyed) {
+    while (run && !this->binding->destroyed && this->generation == this->binding->listener_generation.load()) {
         bool data = false;
 
 #ifdef _WIN32
