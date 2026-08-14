@@ -8,7 +8,7 @@ Node.js module for interacting with the [NUClear](https://github.com/Fastcode/NU
 
 Version 2 uses the redesigned **NUClearNet** library from [NUClear PR #190](https://github.com/Fastcode/NUClear/pull/190) (wire protocol **0x03**). It is **not** compatible with 1.x clients or NUClear builds that still use the old `NUClearNetwork` stack (protocol 0x02). Upgrade Node clients and NUClear robots together.
 
-The vendored NUClear tree is updated via `git subtree` from the `houliston/nuclearnet-v2` branch (currently [NUClear@c6194028](https://github.com/Fastcode/NUClear/commit/c6194028)).
+The vendored NUClear tree is updated via `git subtree` from the `houliston/nuclearnet-v2` branch (currently [NUClear@ffd7231c](https://github.com/Fastcode/NUClear/commit/ffd7231c)).
 
 Peer join events may arrive slightly later than in 1.x because connection requires both multicast announce and a unicast CONNECT handshake.
 
