@@ -24,9 +24,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
+#include <cstdint>
 #include <vector>
 
 #include "nuclearnet/wire_protocol.hpp"
+#include "util/network/sock_t.hpp"
 #include "util/platform.hpp"
 
 using NUClear::network::HandshakeState;
@@ -69,10 +71,10 @@ SCENARIO("Discovery build_leave_packet produces valid packet", "[nuclearnet][dis
 SCENARIO("Discovery process_announce adds a new peer", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
     bool join_called = false;
 
-    disc.set_join_callback([&](const PeerInfo& info) {
+    disc.set_join_callback([&](const PeerInfo&) {
         join_called = true;
     });
 
@@ -83,18 +85,18 @@ SCENARIO("Discovery process_announce adds a new peer", "[nuclearnet][discovery]"
     REQUIRE_FALSE(join_called);
     REQUIRE(disc.has_peer(peer_addr));
 
-    const auto* peer = disc.get_peer(peer_addr);
-    REQUIRE(peer != nullptr);
-    REQUIRE(peer->name == "peer_a");
-    REQUIRE(peer->subscriptions.count(0x1111) == 1);
-    REQUIRE(peer->announce_heard);
-    REQUIRE(peer->handshake == HandshakeState::IDLE);
+    PeerInfo peer;
+    REQUIRE(disc.get_peer(peer_addr, peer));
+    REQUIRE(peer.name == "peer_a");
+    REQUIRE(peer.subscriptions.count(0x1111) == 1);
+    REQUIRE(peer.announce_heard);
+    REQUIRE(peer.handshake == HandshakeState::IDLE);
 }
 
 SCENARIO("Discovery process_announce updates existing peer subscriptions", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
     bool sub_changed = false;
 
     disc.set_subscription_change_callback([&](const PeerInfo&) { sub_changed = true; });
@@ -108,20 +110,20 @@ SCENARIO("Discovery process_announce updates existing peer subscriptions", "[nuc
     disc.process_announce(peer_addr, announce2.data(), announce2.size());
 
     REQUIRE(sub_changed);
-    const auto* peer = disc.get_peer(peer_addr);
-    REQUIRE(peer != nullptr);
-    REQUIRE(peer->subscriptions.count(0x2222) == 1);
-    REQUIRE(peer->subscriptions.count(0x3333) == 1);
-    REQUIRE(peer->subscriptions.count(0x1111) == 0);
+    PeerInfo peer;
+    REQUIRE(disc.get_peer(peer_addr, peer));
+    REQUIRE(peer.subscriptions.count(0x2222) == 1);
+    REQUIRE(peer.subscriptions.count(0x3333) == 1);
+    REQUIRE(peer.subscriptions.count(0x1111) == 0);
 }
 
 SCENARIO("Discovery process_leave removes a peer", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
     bool leave_called = false;
 
-    disc.set_leave_callback([&](const PeerInfo& info) {
+    disc.set_leave_callback([&](const PeerInfo&) {
         leave_called = true;
     });
 
@@ -142,7 +144,7 @@ SCENARIO("Discovery process_leave removes a peer", "[nuclearnet][discovery]") {
 SCENARIO("Discovery check_timeouts removes stale peers", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::milliseconds(20));  // 20ms timeout for testing
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
     bool leave_called = false;
 
     disc.set_leave_callback([&](const PeerInfo&) { leave_called = true; });
@@ -170,7 +172,7 @@ SCENARIO("Discovery check_timeouts removes stale peers", "[nuclearnet][discovery
 SCENARIO("Discovery touch_peer resets timeout", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::milliseconds(200));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
 
     // Add peer at time T and complete handshake
     auto t = std::chrono::steady_clock::now();
@@ -197,8 +199,8 @@ SCENARIO("Discovery touch_peer resets timeout", "[nuclearnet][discovery]") {
 SCENARIO("Discovery get_peers returns all known peers", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t addr_a = make_addr(0x0A000001, 5000);
-    sock_t addr_b = make_addr(0x0A000002, 5000);
+    const sock_t addr_a = make_addr(0x0A000001, 5000);
+    const sock_t addr_b = make_addr(0x0A000002, 5000);
 
     auto announce_a = Discovery::build_announce_packet("node_a", {0x1111});
     auto announce_b = Discovery::build_announce_packet("node_b", {0x2222});
@@ -217,7 +219,7 @@ SCENARIO("Discovery get_peers returns all known peers", "[nuclearnet][discovery]
 SCENARIO("Discovery 3-way handshake normal flow", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
     bool join_called = false;
     std::string joined_name;
 
@@ -230,12 +232,15 @@ SCENARIO("Discovery 3-way handshake normal flow", "[nuclearnet][discovery]") {
     auto announce = Discovery::build_announce_packet("peer_a", {0x1111});
     disc.process_announce(peer_addr, announce.data(), announce.size());
     REQUIRE_FALSE(join_called);
-    REQUIRE(disc.get_peer(peer_addr)->announce_heard);
-    REQUIRE(disc.get_peer(peer_addr)->handshake == HandshakeState::IDLE);
+    PeerInfo peer;
+    REQUIRE(disc.get_peer(peer_addr, peer));
+    REQUIRE(peer.announce_heard);
+    REQUIRE(peer.handshake == HandshakeState::IDLE);
 
     // We send SYN
     disc.mark_syn_sent(peer_addr);
-    REQUIRE(disc.get_peer(peer_addr)->handshake == HandshakeState::SYN_SENT);
+    REQUIRE(disc.get_peer(peer_addr, peer));
+    REQUIRE(peer.handshake == HandshakeState::SYN_SENT);
 
     // Peer responds with SYN+ACK
     auto result = disc.process_connect(peer_addr, SYN | CON_ACK);
@@ -249,7 +254,7 @@ SCENARIO("Discovery 3-way handshake normal flow", "[nuclearnet][discovery]") {
 SCENARIO("Discovery 3-way handshake receiving SYN first", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
     bool join_called = false;
 
     disc.set_join_callback([&](const PeerInfo&) { join_called = true; });
@@ -263,7 +268,9 @@ SCENARIO("Discovery 3-way handshake receiving SYN first", "[nuclearnet][discover
     REQUIRE_FALSE(result.just_connected);
     REQUIRE(result.response_flags == (SYN | CON_ACK));  // We respond with SYN+ACK
     REQUIRE_FALSE(join_called);
-    REQUIRE(disc.get_peer(peer_addr)->handshake == HandshakeState::SYN_RECEIVED);
+    PeerInfo peer;
+    REQUIRE(disc.get_peer(peer_addr, peer));
+    REQUIRE(peer.handshake == HandshakeState::SYN_RECEIVED);
 
     // Peer sends ACK to complete the handshake
     result = disc.process_connect(peer_addr, CON_ACK);
@@ -276,7 +283,7 @@ SCENARIO("Discovery 3-way handshake receiving SYN first", "[nuclearnet][discover
 SCENARIO("Discovery 3-way handshake simultaneous open", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
     bool join_called = false;
 
     disc.set_join_callback([&](const PeerInfo&) { join_called = true; });
@@ -292,7 +299,9 @@ SCENARIO("Discovery 3-way handshake simultaneous open", "[nuclearnet][discovery]
     auto result = disc.process_connect(peer_addr, SYN);
     REQUIRE_FALSE(result.just_connected);
     REQUIRE(result.response_flags == (SYN | CON_ACK));  // Respond with SYN+ACK
-    REQUIRE(disc.get_peer(peer_addr)->handshake == HandshakeState::SYN_RECEIVED);
+    PeerInfo peer;
+    REQUIRE(disc.get_peer(peer_addr, peer));
+    REQUIRE(peer.handshake == HandshakeState::SYN_RECEIVED);
 
     // Peer also sends SYN+ACK (they got our SYN)
     result = disc.process_connect(peer_addr, SYN | CON_ACK);
@@ -318,7 +327,7 @@ SCENARIO("Discovery build_connect_packet produces valid packet", "[nuclearnet][d
 SCENARIO("Discovery process_leave does not fire callback for non-connected peer", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
     bool leave_called = false;
 
     disc.set_leave_callback([&](const PeerInfo&) { leave_called = true; });
@@ -336,7 +345,7 @@ SCENARIO("Discovery process_leave does not fire callback for non-connected peer"
 SCENARIO("Discovery connection deferred until announce heard", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
     bool join_called = false;
 
     disc.set_join_callback([&](const PeerInfo&) { join_called = true; });
@@ -352,8 +361,10 @@ SCENARIO("Discovery connection deferred until announce heard", "[nuclearnet][dis
     REQUIRE_FALSE(result.just_connected);
     REQUIRE_FALSE(join_called);
     REQUIRE_FALSE(disc.is_connected(peer_addr));
-    REQUIRE(disc.get_peer(peer_addr)->handshake == HandshakeState::CONFIRMED);
-    REQUIRE_FALSE(disc.get_peer(peer_addr)->announce_heard);
+    PeerInfo peer;
+    REQUIRE(disc.get_peer(peer_addr, peer));
+    REQUIRE(peer.handshake == HandshakeState::CONFIRMED);
+    REQUIRE_FALSE(peer.announce_heard);
 
     // Now we hear their announce on the announce channel
     auto announce = Discovery::build_announce_packet("peer_a", {});
@@ -367,7 +378,7 @@ SCENARIO("Discovery connection deferred until announce heard", "[nuclearnet][dis
 SCENARIO("Discovery retransmits SYN when announce received in SYN_SENT state", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
 
     // First announce — new peer
     auto announce = Discovery::build_announce_packet("peer_a", {});
@@ -376,7 +387,9 @@ SCENARIO("Discovery retransmits SYN when announce received in SYN_SENT state", "
 
     // We send SYN (externally) and mark state
     disc.mark_syn_sent(peer_addr);
-    REQUIRE(disc.get_peer(peer_addr)->handshake == HandshakeState::SYN_SENT);
+    PeerInfo peer;
+    REQUIRE(disc.get_peer(peer_addr, peer));
+    REQUIRE(peer.handshake == HandshakeState::SYN_SENT);
 
     // SYN was dropped. Another announce arrives — should indicate SYN retransmit
     result = disc.process_announce(peer_addr, announce.data(), announce.size());
@@ -387,7 +400,7 @@ SCENARIO("Discovery retransmits SYN when announce received in SYN_SENT state", "
 SCENARIO("Discovery retransmits SYN+ACK when announce received in SYN_RECEIVED state", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
 
     // Add peer via announce
     auto announce = Discovery::build_announce_packet("peer_a", {});
@@ -396,7 +409,9 @@ SCENARIO("Discovery retransmits SYN+ACK when announce received in SYN_RECEIVED s
     // Peer sends SYN — we go to SYN_RECEIVED
     auto connect_result = disc.process_connect(peer_addr, SYN);
     REQUIRE(connect_result.response_flags == (SYN | CON_ACK));
-    REQUIRE(disc.get_peer(peer_addr)->handshake == HandshakeState::SYN_RECEIVED);
+    PeerInfo peer;
+    REQUIRE(disc.get_peer(peer_addr, peer));
+    REQUIRE(peer.handshake == HandshakeState::SYN_RECEIVED);
 
     // Our SYN+ACK was dropped. Another announce arrives — should indicate SYN+ACK retransmit
     auto result = disc.process_announce(peer_addr, announce.data(), announce.size());
@@ -407,7 +422,7 @@ SCENARIO("Discovery retransmits SYN+ACK when announce received in SYN_RECEIVED s
 SCENARIO("Discovery retransmits ACK when announce received in CONFIRMED but peer not connected", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
 
     // Add peer via announce and complete handshake
     auto announce = Discovery::build_announce_packet("peer_a", {});
@@ -426,13 +441,15 @@ SCENARIO("Discovery retransmits ACK when announce received in CONFIRMED but peer
 SCENARIO("Discovery no retransmit for IDLE peer (not yet sent SYN)", "[nuclearnet][discovery]") {
     Discovery disc(std::chrono::seconds(5));
 
-    sock_t peer_addr = make_addr(0x0A000001, 5000);
+    const sock_t peer_addr = make_addr(0x0A000001, 5000);
 
     // First announce — new peer, handshake IDLE
     auto announce = Discovery::build_announce_packet("peer_a", {});
     auto result = disc.process_announce(peer_addr, announce.data(), announce.size());
     REQUIRE(result.is_new);
-    REQUIRE(disc.get_peer(peer_addr)->handshake == HandshakeState::IDLE);
+    PeerInfo peer;
+    REQUIRE(disc.get_peer(peer_addr, peer));
+    REQUIRE(peer.handshake == HandshakeState::IDLE);
 
     // Second announce — peer still in IDLE (we haven't sent SYN yet)
     // Should indicate SYN needed

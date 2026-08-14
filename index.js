@@ -70,6 +70,7 @@ class NUClearNet extends EventEmitter {
     this._net.onJoin(this._onJoin.bind(this));
     this._net.onLeave(this._onLeave.bind(this));
     this._net.onWait(this._onWait.bind(this));
+    this._net.onLog(this._onNativeLog.bind(this));
 
     this._applyLogLevel(parseLogLevel(this._constructorDebug, process.env.NUCLEARNET_DEBUG));
   }
@@ -77,6 +78,19 @@ class NUClearNet extends EventEmitter {
   _applyLogLevel(level) {
     this._logLevel = level;
     this._net.setLogLevel(level);
+  }
+
+  /**
+   * A log message from the native NUClearNet library.
+   * The native side has already filtered by level, but check again so a level change that
+   * races with a queued message can't slip through.
+   *
+   * @param {number} level
+   * @param {string} component
+   * @param {string} message
+   */
+  _onNativeLog(level, component, message) {
+    this._log(level, message, { component: component });
   }
 
   /**

@@ -153,12 +153,46 @@ The connection is only considered "up" once both the announce path and data path
 
 ### Announce address options
 
+The announce address determines how discovery packets are delivered.
+All nodes in a mesh must agree on the same address and port.
+For multi-peer discovery on one host, the address must fan out to every process bound to the shared announce port.
+
+#### Socket binding
+
+NUClearNet binds the announce socket to **all interfaces** (`INADDR_ANY`) by default, even when the announce address is multicast or broadcast.
+This default is required for broadcast fan-out on macOS.
+An explicit `bind_address` to a specific interface IP can prevent broadcast reception on macOS.
+
+#### Reuse options
+
+NUClearNet sets **`SO_REUSEADDR`** on all platforms and **`SO_REUSEPORT`** when the platform provides it — the two options are always paired where `SO_REUSEPORT` exists.
+Platforms without `SO_REUSEPORT` use `SO_REUSEADDR` alone.
+Socket setup is consistent; fan-out vs load-balance depends on the announce address and OS stack.
+
+#### Address types and multi-peer validity
+
 The announce address can be:
 
 - **Multicast** (e.g., `239.226.152.162`) — the most common setup.
-    All nodes on the same network join the multicast group and hear each other's announcements.
-- **Broadcast** (e.g., `255.255.255.255`) — works on simple LANs without multicast support.
-- **Unicast** — for point-to-point setups or testing.
+    All nodes join the multicast group and hear each other's announcements.
+    Valid for multi-peer on one host on both Linux and macOS (recommended on macOS).
+- **Subnet broadcast** (e.g., `192.168.1.255`) — all nodes on the subnet receive announce messages.
+    Valid for multi-peer on one host on both platforms (requires default `INADDR_ANY` bind on macOS).
+- **Global broadcast** (`255.255.255.255`) — valid for multi-peer on one host on both platforms (noisy; requires default bind on macOS).
+- **Loopback broadcast** (`127.255.255.255`) — valid for multi-peer local dev on **Linux only**.
+    macOS does not deliver UDP to this address locally — a macOS stack limitation, not reuse-option behavior.
+- **Unicast** (e.g., `127.0.0.1`, `192.168.1.50`) — for point-to-point setups between two known peers.
+    Unicast does not fan out to every socket bound on the shared announce port — **invalid for multi-peer on one host** on both platforms.
+
+#### Quick reference — multi-peer on one host
+
+| Address | Linux | macOS |
+| ------- | ----- | ----- |
+| Multicast `239.226.152.162` | Valid | Valid (recommended) |
+| Loopback broadcast `127.255.255.255` | Valid (recommended local dev) | **Invalid** |
+| Subnet broadcast `x.x.x.255` | Valid | Valid (default bind) |
+| Global broadcast `255.255.255.255` | Valid | Valid (default bind) |
+| Unicast `127.0.0.1` / specific IP | **Invalid** | **Invalid** |
 
 ### NAT-friendly port learning
 
@@ -851,11 +885,36 @@ emit(std::make_unique<NetworkConfiguration>(
 | `name`             | `string`   | —                   | Unique name for this node on the network        |
 | `announce_address` | `string`   | `"239.226.152.162"` | Address for node discovery announcements        |
 | `announce_port`    | `uint16_t` | `7447`              | Port for announce messages                      |
-| `bind_address`     | `string`   | `""` (all)          | Local interface to bind to                      |
+| `bind_address`     | `string`   | `""` (all)          | Local interface to bind to (default `INADDR_ANY`; required for broadcast fan-out on macOS) |
 | `mtu`              | `uint16_t` | `1500`              | Maximum transmission unit (fragments if larger) |
+| `log_level`        | `LogLevel` | `UNKNOWN` (off)     | Level to log the networking internals at        |
 
 When a new configuration is received, the `NetworkController` tears down existing sockets and reinitializes with the new settings.
 The node name becomes the identifier that other peers see in `NetworkJoin` events.
+
+### Logging
+
+Every component logs what it is doing through a single sink in `Log.hpp`, gated by a process wide log level that
+defaults to `Off`.
+Because the library is usable without the reactor framework, that sink is a callback rather than a hard dependency
+on NUClear's logging system:
+
+```cpp
+using LogHandler = std::function<void(LogLevel level, const char* component, const std::string& message)>;
+NUClearNet::set_log_handler(handler);  // an empty handler restores the stderr default
+```
+
+Each embedder installs its own handler:
+
+| Embedder            | Where the messages go                                                      |
+| ------------------- | -------------------------------------------------------------------------- |
+| `NetworkController` | Re-emitted as NUClear `LogMessage`s, so the usual log handlers pick them up |
+| NUClearNet.js       | Handed to the JavaScript logger alongside the binding's own messages        |
+| Standalone          | `std::cerr`, formatted as `[NUClearNet:<component>] <level> <message>`      |
+
+Under the reactor framework `NetworkConfiguration::log_level` drives both the library level (which decides what
+the library hands to the handler) and the `NetworkController` reactor level (which decides what it emits), so a
+single setting controls the whole path.
 
 ### Internal engine parameters
 

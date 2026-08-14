@@ -137,6 +137,11 @@ NetworkBinding::NetworkBinding(const Napi::CallbackInfo& info) : Napi::ObjectWra
     this->net.set_socket_change_callback([this]() { this->request_listener_restart(); });
 }
 
+NetworkBinding::~NetworkBinding() {
+    // The log handler is global and captures this, so make sure it can't outlive us even if destroy() was missed
+    network::NUClearNet::set_log_handler(nullptr);
+}
+
 void NetworkBinding::stop_listener() {
     ++this->listener_generation;
 
@@ -340,6 +345,26 @@ void NetworkBinding::OnWait(const Napi::CallbackInfo& info) {
     });
 }
 
+void NetworkBinding::OnLog(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    on_log = Napi::ThreadSafeFunction::New(env, info[0].As<Napi::Function>(), "OnLog", 0, 1);
+
+    // Hand the native logs to the JavaScript logger so they come out the same way as our own messages.
+    // This is a global handler, so the most recently created network wins if there is more than one.
+    network::NUClearNet::set_log_handler(
+        [this](network::LogLevel level, const char* component, const std::string& message) {
+            on_log.BlockingCall(
+                [level, component = std::string(component), message](Napi::Env env, Napi::Function js_callback) {
+                    js_callback.Call({
+                        Napi::Number::New(env, static_cast<int>(level)),
+                        Napi::String::New(env, component),
+                        Napi::String::New(env, message),
+                    });
+                });
+        });
+}
+
 void NetworkBinding::Reset(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -468,6 +493,9 @@ void NetworkBinding::Destroy(const Napi::CallbackInfo& info) {
 
     this->stop_listener();
 
+    // Put the native logs back on stderr before releasing the function they were going to
+    network::NUClearNet::set_log_handler(nullptr);
+
     this->net.set_socket_change_callback([]() {});
     this->net.set_packet_callback(
         [](const sock_t&, const std::string&, uint64_t, bool, std::vector<uint8_t>&&) {});
@@ -479,6 +507,9 @@ void NetworkBinding::Destroy(const Napi::CallbackInfo& info) {
     on_join.Release();
     on_leave.Release();
     on_wait.Release();
+    if (this->on_log) {
+        this->on_log.Release();
+    }
     if (this->listener_restart) {
         this->listener_restart.Release();
     }
@@ -522,6 +553,9 @@ void NetworkBinding::Init(Napi::Env env, Napi::Object exports) {
                                            static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
                                        InstanceMethod<&NetworkBinding::SetLogLevel>(
                                            "setLogLevel",
+                                           static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
+                                       InstanceMethod<&NetworkBinding::OnLog>(
+                                           "onLog",
                                            static_cast<napi_property_attributes>(napi_writable | napi_configurable)),
                                        InstanceMethod<&NetworkBinding::Destroy>(
                                            "destroy",

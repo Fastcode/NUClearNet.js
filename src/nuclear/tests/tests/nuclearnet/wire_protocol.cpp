@@ -22,11 +22,18 @@
 
 #include "nuclearnet/wire_protocol.hpp"
 
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
 #include <cstring>
 
-using namespace NUClear::network;
+using NUClear::network::ACKPacket;
+using NUClear::network::DATA;
+using NUClear::network::DataPacket;
+using NUClear::network::LeavePacket;
+using NUClear::network::PacketHeader;
+using NUClear::network::PROTOCOL_VERSION;
+using NUClear::network::validate_header;
 
 SCENARIO("Wire protocol structs have correct packed sizes", "[nuclearnet][wire_protocol]") {
     // PacketHeader: magic(3) + version(1) + type(1) = 5
@@ -64,17 +71,17 @@ SCENARIO("Wire protocol header is laid out at expected byte offsets", "[nuclearn
     REQUIRE(raw[4] == DATA);
 
     // packet_id at offset 5-6
-    uint16_t pid;
+    uint16_t pid{};
     std::memcpy(&pid, raw + 5, 2);
     REQUIRE(pid == 0x0102);
 
     // packet_no at offset 7-8
-    uint16_t pno;
+    uint16_t pno{};
     std::memcpy(&pno, raw + 7, 2);
     REQUIRE(pno == 0x0304);
 
     // packet_count at offset 9-10
-    uint16_t pcnt;
+    uint16_t pcnt{};
     std::memcpy(&pcnt, raw + 9, 2);
     REQUIRE(pcnt == 0x0506);
 
@@ -82,7 +89,7 @@ SCENARIO("Wire protocol header is laid out at expected byte offsets", "[nuclearn
     REQUIRE(raw[11] == 0x07);
 
     // hash at offset 12-19
-    uint64_t h;
+    uint64_t h{};
     std::memcpy(&h, raw + 12, 8);
     REQUIRE(h == 0x08090A0B0C0D0E0F);
 }
@@ -95,16 +102,16 @@ SCENARIO("validate_header accepts valid packets", "[nuclearnet][wire_protocol]")
 }
 
 SCENARIO("validate_header rejects packet too short", "[nuclearnet][wire_protocol]") {
-    uint8_t data[4] = {0xE2, 0x98, 0xA2, 0x03};
-    REQUIRE_FALSE(validate_header(data, 4));
+    const std::array<uint8_t, 4> data = {0xE2, 0x98, 0xA2, 0x03};
+    REQUIRE_FALSE(validate_header(data.data(), data.size()));
 }
 
 SCENARIO("validate_header rejects wrong magic bytes", "[nuclearnet][wire_protocol]") {
-    uint8_t data[5] = {0x00, 0x00, 0x00, 0x03, 0x01};
-    REQUIRE_FALSE(validate_header(data, 5));
+    const std::array<uint8_t, 5> data = {0x00, 0x00, 0x00, 0x03, 0x01};
+    REQUIRE_FALSE(validate_header(data.data(), data.size()));
 }
 
 SCENARIO("validate_header rejects wrong protocol version", "[nuclearnet][wire_protocol]") {
-    uint8_t data[5] = {0xE2, 0x98, 0xA2, 0x99, 0x01};  // Version 0x99
-    REQUIRE_FALSE(validate_header(data, 5));
+    const std::array<uint8_t, 5> data = {0xE2, 0x98, 0xA2, 0x99, 0x01};  // Version 0x99
+    REQUIRE_FALSE(validate_header(data.data(), data.size()));
 }

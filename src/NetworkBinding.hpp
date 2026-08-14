@@ -31,6 +31,7 @@ class NetworkListener;
 class NetworkBinding : public Napi::ObjectWrap<NetworkBinding> {
 public:
     NetworkBinding(const Napi::CallbackInfo& info);
+    ~NetworkBinding();
 
     Napi::Value Hash(const Napi::CallbackInfo& info);
     void Send(const Napi::CallbackInfo& info);
@@ -38,6 +39,7 @@ public:
     void OnJoin(const Napi::CallbackInfo& info);
     void OnLeave(const Napi::CallbackInfo& info);
     void OnWait(const Napi::CallbackInfo& info);
+    void OnLog(const Napi::CallbackInfo& info);
     void Reset(const Napi::CallbackInfo& info);
     void Process(const Napi::CallbackInfo& info);
     void Shutdown(const Napi::CallbackInfo& info);
@@ -57,6 +59,7 @@ public:
     Napi::ThreadSafeFunction on_join;
     Napi::ThreadSafeFunction on_leave;
     Napi::ThreadSafeFunction on_wait;
+    Napi::ThreadSafeFunction on_log;
     Napi::ThreadSafeFunction listener_restart;
 
 #ifdef _WIN32

@@ -84,6 +84,10 @@ namespace {
         network::set_log_level(level);
     }
 
+    void NUClearNet::set_log_handler(LogHandler handler) {
+        network::set_log_handler(std::move(handler));
+    }
+
     NUClearNet::NUClearNet()
         : discovery(std::make_unique<Discovery>(std::chrono::seconds(2)))
         , fragmentation(std::make_unique<Fragmentation>(1452, 64 * 1024 * 1024, std::chrono::seconds(2)))
@@ -229,6 +233,9 @@ namespace {
             int yes = 1;
             ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes));
 #ifdef SO_REUSEPORT
+            // SO_REUSEADDR and SO_REUSEPORT are always paired when SO_REUSEPORT is available.
+            // Which announce addresses fan out to every bound socket vs one socket depends on
+            // the address and platform stack, not on these socket options.
             ::setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, reinterpret_cast<const char*>(&yes), sizeof(yes));
 #endif
             ::setsockopt(fd, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<const char*>(&yes), sizeof(yes));

@@ -35,7 +35,7 @@ export interface NUClearNetOptions {
 
   /**
    * Enable debug logging. `true` is equivalent to `info`.
-   * Native logs go to stderr; JavaScript logs use `console.error` with a `[NUClearNet.js]` prefix.
+   * Logs from the native library and from JavaScript both use `console.error` with a `[NUClearNet.js]` prefix.
    * The `NUCLEARNET_DEBUG` environment variable applies when this option is omitted.
    */
   debug?: boolean | 'off' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
